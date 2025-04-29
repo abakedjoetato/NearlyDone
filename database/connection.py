@@ -2,11 +2,23 @@ import motor.motor_asyncio
 import logging
 import json
 import asyncio
+import os
+import traceback
 from bson import ObjectId
 from datetime import datetime
 from config import MONGODB_URI, DATABASE_NAME
 
 logger = logging.getLogger('deadside_bot.database')
+
+# Set up more detailed logging for the database module
+logging.basicConfig(
+    level=logging.DEBUG if os.getenv('DATABASE_DEBUG') == 'true' else logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('logs/database.log', mode='a')
+    ]
+)
 
 class Database:
     """
@@ -16,27 +28,83 @@ class Database:
     _instance = None
     _client = None
     _db = None
+    _connected = False
+    _connection_attempts = 0
+    _max_connection_attempts = 5
+    _connection_retry_delay = 3  # seconds
     
     @classmethod
     async def get_instance(cls):
         """Get or create the singleton instance of the Database class"""
         if cls._instance is None:
             cls._instance = cls()
+            await cls._instance._connect_with_retry()
+        elif not cls._connected:
+            # If we have an instance but not connected, retry connection
+            await cls._instance._connect_with_retry()
+        return cls._instance
+    
+    async def _connect_with_retry(self):
+        """Connect to MongoDB with retry logic"""
+        self._connection_attempts = 0
+        while self._connection_attempts < self._max_connection_attempts:
             try:
+                self._connection_attempts += 1
+                logger.info(f"Connecting to MongoDB (attempt {self._connection_attempts}/{self._max_connection_attempts})")
+                
+                # Log connection details (without credentials)
+                safe_uri = MONGODB_URI
+                if "@" in safe_uri:
+                    # Mask credentials in the URI for logging
+                    proto, rest = safe_uri.split("://", 1)
+                    if "@" in rest:
+                        credentials, host_part = rest.split("@", 1)
+                        safe_uri = f"{proto}://***:***@{host_part}"
+                
+                logger.info(f"Connection URI: {safe_uri}, Database: {DATABASE_NAME}")
+                
                 # Connect to MongoDB
-                cls._client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URI)
-                cls._db = cls._client[DATABASE_NAME]
+                self.__class__._client = motor.motor_asyncio.AsyncIOMotorClient(
+                    MONGODB_URI,
+                    serverSelectionTimeoutMS=5000,  # 5 second timeout for server selection
+                    connectTimeoutMS=10000,         # 10 second timeout for connection
+                    socketTimeoutMS=30000,          # 30 second timeout for socket operations
+                    maxPoolSize=50,                 # Maximum connection pool size
+                    minPoolSize=5,                  # Minimum connection pool size
+                    maxIdleTimeMS=30000,            # Maximum idle time for connection
+                    waitQueueTimeoutMS=5000         # Maximum wait time for connection from pool
+                )
+                self.__class__._db = self._client[DATABASE_NAME]
                 
                 # Test connection
-                await cls._db.command({"ping": 1})
-                logger.info("Connected to MongoDB")
+                logger.debug("Testing MongoDB connection with ping command")
+                await self._db.command({"ping": 1})
+                
+                # Connection successful
+                self.__class__._connected = True
+                logger.info(f"Successfully connected to MongoDB database '{DATABASE_NAME}'")
                 
                 # Initialize collections and indexes
-                await cls._init_collections()
+                await self._init_collections()
+                return
+                
             except Exception as e:
-                logger.error(f"Failed to connect to MongoDB: {e}")
-                raise
-        return cls._instance
+                logger.error(f"Failed to connect to MongoDB (attempt {self._connection_attempts}): {e}")
+                logger.error(traceback.format_exc())
+                
+                if self._connection_attempts >= self._max_connection_attempts:
+                    logger.critical(f"Maximum connection attempts ({self._max_connection_attempts}) reached. Giving up.")
+                    self.__class__._connected = False
+                    raise Exception(f"Failed to connect to MongoDB after {self._max_connection_attempts} attempts") from e
+                
+                # Wait before retrying
+                retry_delay = self._connection_retry_delay * self._connection_attempts
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+        
+        # If we get here, all connection attempts failed
+        self.__class__._connected = False
+        raise Exception(f"Failed to connect to MongoDB after {self._max_connection_attempts} attempts")
     
     @classmethod
     async def _init_collections(cls):

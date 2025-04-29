@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Discord Bot</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container my-4">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="text-center mb-4">Discord Bot Debugger</h1>
+                
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h2 class="h5 mb-0">Debug Tools</h2>
+                            </div>
+                            <div class="card-body">
+                                <form method="post" id="debug-form">
+                                    <div class="d-grid mb-3">
+                                        <button type="submit" name="action" value="validate_structure" class="btn btn-outline-primary">
+                                            Analyze Bot Structure
+                                        </button>
+                                    </div>
+                                    
+                                    <hr>
+                                    
+                                    <div class="mb-3">
+                                        <label for="mongodb-uri" class="form-label">MongoDB URI</label>
+                                        <input type="text" class="form-control" id="mongodb-uri" name="mongodb_uri" placeholder="mongodb://username:password@host:port/database">
+                                    </div>
+                                    <div class="d-grid mb-3">
+                                        <button type="submit" name="action" value="validate_mongodb" class="btn btn-outline-primary">
+                                            Test MongoDB Connection
+                                        </button>
+                                    </div>
+                                    
+                                    <hr>
+                                    
+                                    <div class="mb-3">
+                                        <label for="discord-token" class="form-label">Discord Bot Token</label>
+                                        <input type="password" class="form-control" id="discord-token" name="discord_token" placeholder="Your Discord bot token">
+                                    </div>
+                                    <div class="d-grid mb-3">
+                                        <button type="submit" name="action" value="validate_discord" class="btn btn-outline-primary">
+                                            Test Discord API
+                                        </button>
+                                    </div>
+                                    
+                                    <hr>
+                                    
+                                    <div class="mb-3">
+                                        <label for="main-file" class="form-label">Bot Main File</label>
+                                        <select class="form-select" id="main-file" name="main_file">
+                                            <option value="" selected>Select the main bot file</option>
+                                            {% for file in python_files %}
+                                                <option value="{{ file }}">{{ file }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="d-grid mb-2">
+                                        <button type="submit" name="action" value="run_bot" class="btn btn-success">
+                                            Run Bot
+                                        </button>
+                                    </div>
+                                    <div class="d-grid">
+                                        <button type="submit" name="action" value="stop_bot" class="btn btn-danger">
+                                            Stop Bot
+                                        </button>
+                                    </div>
+                                </form>
+                                
+                                <hr>
+                                
+                                <div class="d-grid">
+                                    <a href="/" class="btn btn-secondary">Back to Upload</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-8">
+                        <div class="card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h2 class="h5 mb-0">Debug Output</h2>
+                                <button id="refresh-output" class="btn btn-sm btn-outline-secondary">Refresh</button>
+                            </div>
+                            <div class="card-body">
+                                <div class="debug-output">
+                                    <pre id="output-area" class="terminal">{% for line in debug_output %}{{ line }}
+{% endfor %}</pre>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="h5 mb-0">Common Issues & Solutions</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="accordion" id="accordionExample">
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
+                                                Discord Connection Issues
+                                            </button>
+                                        </h2>
+                                        <div id="collapseOne" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
+                                            <div class="accordion-body">
+                                                <ul>
+                                                    <li><strong>Invalid Token:</strong> Make sure your Discord token is correct and the bot is not disabled.</li>
+                                                    <li><strong>Intents Issues:</strong> Since Discord.py 2.0, you need to explicitly enable certain intents, especially message_content for reading messages.</li>
+                                                    <li><strong>Rate Limiting:</strong> Discord has rate limits. Consider adding delays between commands or message sends.</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                                                MongoDB Connection Issues
+                                            </button>
+                                        </h2>
+                                        <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
+                                            <div class="accordion-body">
+                                                <ul>
+                                                    <li><strong>Connection String:</strong> Make sure the MongoDB URI is in the correct format: mongodb://username:password@host:port/database</li>
+                                                    <li><strong>Network Issues:</strong> Ensure the MongoDB server is accessible from your current location (IP whitelisting may be required).</li>
+                                                    <li><strong>Authentication:</strong> Verify that the username and password in the URI are correct.</li>
+                                                    <li><strong>Connection Handling:</strong> Always wrap MongoDB operations in try/except blocks to handle connection failures gracefully.</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
+                                                Code Structure Issues
+                                            </button>
+                                        </h2>
+                                        <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
+                                            <div class="accordion-body">
+                                                <ul>
+                                                    <li><strong>Event Handling:</strong> Always use try/except in your event handlers to prevent bot crashes.</li>
+                                                    <li><strong>Command Error Handling:</strong> Implement on_command_error to catch and handle command errors.</li>
+                                                    <li><strong>Environmental Variables:</strong> Store sensitive information like tokens and URIs in environment variables.</li>
+                                                    <li><strong>Asynchronous Code:</strong> Make sure you're using async/await correctly in your Discord.py code.</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Function to refresh the output
+            function refreshOutput() {
+                fetch('/debug_output')
+                    .then(response => response.json())
+                    .then(data => {
+                        const outputArea = document.getElementById('output-area');
+                        outputArea.textContent = data.output.join('\n');
+                        // Scroll to bottom
+                        outputArea.scrollTop = outputArea.scrollHeight;
+                    })
+                    .catch(error => console.error('Error fetching output:', error));
+            }
+            
+            // Set up refresh button
+            document.getElementById('refresh-output').addEventListener('click', refreshOutput);
+            
+            // Auto-refresh output every 3 seconds when bot is running
+            setInterval(refreshOutput, 3000);
+        });
+    </script>
+</body>
+</html>

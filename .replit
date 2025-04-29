@@ -2,7 +2,7 @@ modules = ["python-3.11"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["openssl", "postgresql", "unzip"]
+packages = ["glibcLocales", "libsodium", "nettle", "openssh", "openssl", "postgresql", "unzip"]
 
 [deployment]
 deploymentTarget = "autoscale"

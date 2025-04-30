@@ -270,6 +270,33 @@ logging.warning("Console test: This is a sample warning log")
 logging.error("Console test: This is a sample error log")
 logging.debug("Console test: This is a debug message")
 
+# Start Discord bot in a background thread
+def start_discord_bot():
+    """Start the Discord bot in a separate thread"""
+    import time
+    logging.info("Starting Discord bot thread")
+    try:
+        # Small delay to ensure Flask is fully initialized
+        time.sleep(2)
+        
+        # Import the bot's main function
+        from bot_main import main as bot_main
+        
+        # Run the bot
+        bot_main()
+    except Exception as e:
+        logging.error(f"Error starting Discord bot: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+
+# Start the bot thread
+try:
+    bot_thread = threading.Thread(target=start_discord_bot, daemon=True)
+    bot_thread.start()
+    logging.info(f"Discord bot thread started (thread ID: {bot_thread.ident})")
+except Exception as e:
+    logging.error(f"Failed to start bot thread: {e}")
+
 # Set up periodic logging
 def log_system_info():
     """Periodically log system info to provide an active log stream"""

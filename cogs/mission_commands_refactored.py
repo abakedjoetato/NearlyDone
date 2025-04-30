@@ -756,3 +756,7 @@ class MissionCommands(commands.Cog):
             logger.error(f"Error updating tracking settings: {e}")
             
         return False
+
+def setup(bot):
+    """Add the cog to the bot directly when loaded via extension"""
+    bot.add_cog(MissionCommands(bot))

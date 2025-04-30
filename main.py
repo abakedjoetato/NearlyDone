@@ -16,8 +16,8 @@ from cogs.admin_commands import AdminCommands
 # from cogs.server_commands_refactored import ServerCommands
 # from cogs.stats_commands_refactored import StatsCommands
 # from cogs.killfeed_commands_refactored import KillfeedCommands
-# from cogs.mission_commands_refactored import MissionCommands
-# from cogs.connection_commands import ConnectionCommands
+from cogs.mission_commands_refactored import MissionCommands
+from cogs.connection_commands_refactored import ConnectionCommands
 # from cogs.faction_commands import FactionCommands
 # from cogs.notification_cog import NotificationCog
 # from cogs.rivalry_commands import RivalryCommands
@@ -668,9 +668,9 @@ async def sync_slash_commands():
         # Import all command groups to make sure they're available
         logger.info("Step 1: Importing all command groups")
         from cogs.server_commands_refactored import server_group 
-        from cogs.connection_commands import connection_group
+        from cogs.connection_commands_refactored import connection_group
         from cogs.killfeed_commands_refactored import killfeed_group
-        # from cogs.mission_commands_refactored import mission_group
+        from cogs.mission_commands_refactored import mission_group
         from cogs.faction_commands import faction_group
         from cogs.stats_commands_refactored import stats_group
         
@@ -1129,9 +1129,9 @@ async def commands_menu(ctx):
 from cogs.server_commands import ServerCommands
 from cogs.stats_commands_refactored import StatsCommands
 from cogs.killfeed_commands import KillfeedCommands
-# Temporarily commenting out problematic cogs during debugging
-# from cogs.mission_commands_refactored import MissionCommands
-from cogs.connection_commands import ConnectionCommands
+# Using our refactored mission and connection cogs
+from cogs.mission_commands_refactored import MissionCommands
+from cogs.connection_commands_refactored import ConnectionCommands
 from cogs.admin_commands import AdminCommands
 # from cogs.faction_commands import FactionCommands
 # from cogs.notification_cog import NotificationCog
@@ -1295,8 +1295,8 @@ async def load_cogs():
         ServerCommands,
         StatsCommands,
         KillfeedCommands,
-        # ConnectionCommands,
-        # MissionCommands, # Temporarily disabled due to syntax errors
+        ConnectionCommands,
+        MissionCommands, # Using our refactored implementation
         AdminCommands
         # FactionCommands, # Temporarily disabled due to syntax errors
         # NotificationCog, # Temporarily disabled due to syntax errors

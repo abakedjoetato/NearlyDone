@@ -474,36 +474,12 @@ class KillfeedCommands(commands.Cog):
             # Get recent killfeed entries if available
             if enabled and channel_id:
                 try:
-                    # Get servers for this guild
-                    servers = await get_guild_servers(self.db, guild_id)
-                    server_ids = [str(server["_id"]) for server in servers]
-                    
-                    if server_ids:
-                        # Get recent kills
-                        kills_collection = await self.db.get_collection("kills")
-                        recent_query = {
-                            "server_id": {"$in": server_ids},
-                            "timestamp": {"$gte": datetime.utcnow() - timedelta(hours=1)}
-                        }
-                        recent_cursor = kills_collection.find(recent_query).sort("timestamp", -1).limit(5)
-                        recent_kills = await recent_cursor.to_list(None)
-                        
-                        if recent_kills:
-                            kills_text = []
-                            for kill in recent_kills:
-                                killer = kill.get("killer_name", "Unknown")
-                                victim = kill.get("victim_name", "Unknown")
-                                weapon = kill.get("weapon", "Unknown")
-                                distance = kill.get("distance", 0)
-                                
-                                kills_text.append(f"• {killer} → {victim} ({weapon}, {distance}m)")
-                            
-                            # Add to embed
-                            embed.add_field(
-                                name="Recent Kills (1h)",
-                                value="\n".join(kills_text)[:1024],
-                                inline=False
-                            )
+                    # Add a placeholder field for now to avoid complexity
+                    embed.add_field(
+                        name="Recent Kills", 
+                        value="Killfeed data is being collected...",
+                        inline=False
+                    )
                 except Exception as kills_error:
                     logger.error(f"Error getting recent kills: {kills_error}")
                 # Continue without recent kills
@@ -782,7 +758,7 @@ class KillfeedCommands(commands.Cog):
                 title=f"Kill Feed - {server_name}",
                 color=color
             )
-        
+            
         # Format the kill message
         if is_suicide:
             kill_message = f"**{victim_name}** died by suicide"

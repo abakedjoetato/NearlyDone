@@ -54,7 +54,45 @@ SERVER_COMMANDS = {
         },
         {
             "name": "add",
-            "description": "Add a new server to monitor"
+            "description": "Add a new server to monitor",
+            "options": [
+                {
+                    "name": "name",
+                    "description": "A name for the server",
+                    "type": 3,  # String type
+                    "required": True
+                },
+                {
+                    "name": "host",
+                    "description": "Server IP address or hostname",
+                    "type": 3,  # String type
+                    "required": True
+                },
+                {
+                    "name": "port",
+                    "description": "SSH port (usually 22)",
+                    "type": 4,  # Integer type
+                    "required": True
+                },
+                {
+                    "name": "username",
+                    "description": "SSH/SFTP username",
+                    "type": 3,  # String type
+                    "required": True
+                },
+                {
+                    "name": "password",
+                    "description": "SSH/SFTP password",
+                    "type": 3,  # String type
+                    "required": True
+                },
+                {
+                    "name": "serverid",
+                    "description": "Unique server ID used in directory names",
+                    "type": 3,  # String type
+                    "required": True
+                }
+            ]
         }
     ]
 }

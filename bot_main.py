@@ -341,10 +341,21 @@ async def check_parsers():
             
             # Check for stalled batch parsers
             parser_memory_collection = db["parser_memory"]
+            
+            # Clean up old parser memory entries first (older than 2 hours)
+            two_hours_ago = datetime.utcnow() - timedelta(hours=2)
+            cleanup_result = await parser_memory_collection.delete_many({
+                "server_id": server_id,
+                "updated_at": {"$lt": two_hours_ago}
+            })
+            if cleanup_result.deleted_count > 0:
+                logger.info(f"Cleaned up {cleanup_result.deleted_count} old parser memory entries for server {server_name}")
+            
+            # Now check for stalled parsers
             batch_parser = await parser_memory_collection.find_one({
                 "server_id": server_id,
-                "type": "batch_csv",
-                "status": "running"
+                "parser_type": "batch_csv",
+                "is_running": True
             })
             
             if batch_parser:

@@ -1,16 +1,18 @@
 """
-Discord Bot Final Command Fix
+Smart Discord Bot Command Registration
 
-This script implements a complete solution for the Discord command registration issues.
-It carefully registers all commands to the Discord API with proper rate limit handling
-and comprehensive logging.
+This script efficiently registers Discord commands by:
+1. Checking existing commands
+2. Only registering new commands or updating changed ones
+3. Removing commands that are no longer needed
+4. Avoiding unnecessary API calls to stay within rate limits
 """
 
 import os
 import asyncio
 import logging
 import sys
-import time
+import json
 from dotenv import load_dotenv
 
 # Configure logging
@@ -19,18 +21,16 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('logs/command_fix.log', mode='w')
+        logging.FileHandler('logs/smart_register.log', mode='w')
     ]
 )
 
-logger = logging.getLogger("command_fix")
+logger = logging.getLogger("smart_register")
 
 # Load environment variables
 load_dotenv()
 
-# Command definitions - these are all the commands our bot will have
-# Each is defined with name, description, and any subcommands/options
-
+# Command definitions - same as in final_command_fix.py
 # Basic server command group
 SERVER_COMMANDS = {
     "name": "server",
@@ -261,168 +261,189 @@ ALL_SIMPLE_COMMANDS = [
     COMMANDS_MENU_COMMAND
 ]
 
-async def register_commands_with_discord(bot, guild=None):
+def command_to_dict(command):
+    """Convert a command definition to a dict format matching Discord's API response"""
+    if "subcommands" in command:
+        # This is a command group
+        options = []
+        for subcmd in command["subcommands"]:
+            subcmd_option = {
+                "type": 1,  # Subcommand type
+                "name": subcmd["name"],
+                "description": subcmd["description"]
+            }
+            
+            # Add options if any
+            if "options" in subcmd:
+                subcmd_option["options"] = []
+                for opt in subcmd["options"]:
+                    subcmd_option["options"].append({
+                        "type": opt["type"],
+                        "name": opt["name"],
+                        "description": opt["description"],
+                        "required": opt.get("required", False)
+                    })
+            
+            options.append(subcmd_option)
+        
+        return {
+            "name": command["name"],
+            "description": command["description"],
+            "options": options
+        }
+    else:
+        # This is a simple command
+        return {
+            "name": command["name"],
+            "description": command["description"],
+        }
+
+def commands_are_equivalent(cmd1, cmd2):
     """
-    Register commands with Discord using the most reliable approach
+    Compare two commands to see if they're functionally equivalent.
+    Returns True if the commands are the same (no update needed),
+    False if they differ (update needed).
+    """
+    # Basic command properties check
+    if cmd1["name"] != cmd2["name"] or cmd1["description"] != cmd2["description"]:
+        return False
     
-    Args:
-        bot: The Discord bot instance
-        guild: Optional guild to register commands to specifically.
-               If None, registers commands globally.
+    # Check options/subcommands
+    if "options" in cmd1 and "options" in cmd2:
+        # If number of options differs, commands are different
+        if len(cmd1["options"]) != len(cmd2["options"]):
+            return False
+        
+        # Sort options by name to ensure consistent comparison
+        cmd1_options = sorted(cmd1["options"], key=lambda x: x["name"])
+        cmd2_options = sorted(cmd2["options"], key=lambda x: x["name"])
+        
+        # Compare each option
+        for opt1, opt2 in zip(cmd1_options, cmd2_options):
+            # Check if option types differ
+            if opt1.get("type") != opt2.get("type"):
+                return False
+            
+            # Check basic option properties
+            if (opt1["name"] != opt2["name"] or 
+                opt1["description"] != opt2["description"] or
+                opt1.get("required", False) != opt2.get("required", False)):
+                return False
+            
+            # For subcommands, recursively check their options
+            if opt1.get("type") == 1 and "options" in opt1 and "options" in opt2:
+                # Convert to dict format for comparison
+                subcmd1 = {"name": opt1["name"], "description": opt1["description"], "options": opt1["options"]}
+                subcmd2 = {"name": opt2["name"], "description": opt2["description"], "options": opt2["options"]}
+                if not commands_are_equivalent(subcmd1, subcmd2):
+                    return False
+    
+    # If we got here, commands are equivalent
+    return True
+
+async def smart_register_commands(bot, guild=None):
+    """
+    Smart command registration system that only updates commands that have changed
     """
     try:
+        # Get bot_id, guild_id and guild_name for logging
+        bot_id = bot.user.id
         guild_id = guild.id if guild else None
         guild_name = guild.name if guild else "global"
         log_prefix = f"[Guild: {guild_name}] " if guild else "[Global] "
         
-        logger.info(f"{log_prefix}Starting command registration process...")
+        logger.info(f"{log_prefix}Starting smart command registration...")
         
-        # First, delete all existing commands to prevent duplicates
-        try:
-            # Get existing commands
-            if guild_id:
-                existing_commands = await bot.http.get_guild_commands(bot.user.id, guild_id)
-                logger.info(f"{log_prefix}Found {len(existing_commands)} existing commands")
-                
-                # Delete each command
-                for cmd in existing_commands:
-                    cmd_id = cmd['id']
-                    cmd_name = cmd['name']
-                    logger.info(f"{log_prefix}Deleting existing command: {cmd_name} (ID: {cmd_id})")
-                    
-                    try:
-                        await bot.http.delete_guild_command(bot.user.id, guild_id, cmd_id)
-                        logger.info(f"{log_prefix}Successfully deleted command: {cmd_name}")
-                    except Exception as e:
-                        logger.error(f"{log_prefix}Error deleting command {cmd_name}: {e}")
-            else:
-                # Handle global commands
-                existing_commands = await bot.http.get_global_commands(bot.user.id)
-                logger.info(f"{log_prefix}Found {len(existing_commands)} existing global commands")
-                
-                # Delete each global command
-                for cmd in existing_commands:
-                    cmd_id = cmd['id']
-                    cmd_name = cmd['name']
-                    logger.info(f"{log_prefix}Deleting existing global command: {cmd_name} (ID: {cmd_id})")
-                    
-                    try:
-                        await bot.http.delete_global_command(bot.user.id, cmd_id)
-                        logger.info(f"{log_prefix}Successfully deleted global command: {cmd_name}")
-                    except Exception as e:
-                        logger.error(f"{log_prefix}Error deleting global command {cmd_name}: {e}")
-            
-            # Clear all commands with an empty sync
-            if guild_id:
-                await bot.sync_commands(guild_ids=[guild_id], commands=[])
-                logger.info(f"{log_prefix}Cleared command registry")
-            else:
-                await bot.sync_commands(commands=[])
-                logger.info(f"{log_prefix}Cleared global command registry")
-                
-            # Wait a moment for Discord to process the deletions
-            await asyncio.sleep(2)
-            
-        except Exception as e:
-            logger.error(f"{log_prefix}Error cleaning up existing commands: {e}")
+        # Get existing commands
+        existing_commands = []
+        if guild:
+            existing_commands = await bot.http.get_guild_commands(bot_id, guild_id)
+        else:
+            existing_commands = await bot.http.get_global_commands(bot_id)
         
-        logger.info(f"{log_prefix}Registering new commands...")
+        logger.info(f"{log_prefix}Found {len(existing_commands)} existing commands")
         
-        # Register each command group with its subcommands
+        # Create a dict of desired commands (what we want to have)
+        desired_commands = {}
+        
+        # Add all command groups
         for group in ALL_COMMAND_GROUPS:
-            try:
-                # Create command group
-                cmd_group = bot.create_group(
-                    name=group["name"],
-                    description=group["description"],
-                    guild_ids=[guild_id] if guild_id else None
-                )
-                
-                # Register each subcommand in the group
-                for subcmd in group["subcommands"]:
-                    options = subcmd.get("options", [])
-                    
-                    # Convert options to proper format if needed
-                    discord_options = []
-                    for opt in options:
-                        if 'discord' in sys.modules:
-                            import discord
-                            # Use proper Discord option types
-                            opt_type = opt["type"]
-                            if opt_type == 3:  # String
-                                discord_options.append(
-                                    discord.Option(
-                                        str,
-                                        name=opt["name"],
-                                        description=opt["description"],
-                                        required=opt.get("required", False)
-                                    )
-                                )
-                            elif opt_type == 4:  # Integer
-                                discord_options.append(
-                                    discord.Option(
-                                        int,
-                                        name=opt["name"],
-                                        description=opt["description"],
-                                        required=opt.get("required", False)
-                                    )
-                                )
-                    
-                    # Use the raw decorator approach
-                    @cmd_group.command(
-                        name=subcmd["name"],
-                        description=subcmd["description"],
-                        guild_ids=[guild_id] if guild_id else None
-                    )
-                    async def subcommand_placeholder(ctx, *args, **kwargs):
-                        await ctx.respond(f"Command registered: {ctx.command.name}")
-                    
-                logger.info(f"{log_prefix}Registered command group: {group['name']} with {len(group['subcommands'])} subcommands")
-            except Exception as e:
-                logger.error(f"{log_prefix}Error registering command group {group['name']}: {e}")
-                import traceback
-                traceback.print_exc()
+            desired_commands[group["name"]] = command_to_dict(group)
         
-        # Register simple commands (not in groups)
+        # Add all simple commands
         for cmd in ALL_SIMPLE_COMMANDS:
-            try:
-                @bot.slash_command(
-                    name=cmd["name"],
-                    description=cmd["description"],
-                    guild_ids=[guild_id] if guild_id else None
-                )
-                async def command_placeholder(ctx):
-                    await ctx.respond(f"Command registered: {ctx.command.name}")
-                
-                logger.info(f"{log_prefix}Registered simple command: {cmd['name']}")
-            except Exception as e:
-                logger.error(f"{log_prefix}Error registering simple command {cmd['name']}: {e}")
+            desired_commands[cmd["name"]] = command_to_dict(cmd)
         
-        # Force sync the commands to Discord
-        logger.info(f"{log_prefix}Syncing all commands...")
-        try:
-            # Wait a moment before syncing to avoid rate limits
-            await asyncio.sleep(1)
-            
-            if guild:
-                synced = await bot.sync_commands(guild_ids=[guild.id])
-                logger.info(f"{log_prefix}Synced {len(synced) if synced else 0} commands")
+        # Create a dict of existing commands for lookup
+        existing_command_dict = {cmd["name"]: cmd for cmd in existing_commands}
+        
+        # Track changes
+        commands_to_update = []
+        command_ids_to_delete = []
+        
+        # First, find commands to update or create
+        for cmd_name, cmd_data in desired_commands.items():
+            if cmd_name in existing_command_dict:
+                # Command exists, check if it needs updating
+                if not commands_are_equivalent(cmd_data, existing_command_dict[cmd_name]):
+                    logger.info(f"{log_prefix}Command '{cmd_name}' has changed, will update")
+                    commands_to_update.append(cmd_data)
+                else:
+                    logger.info(f"{log_prefix}Command '{cmd_name}' is unchanged, skipping")
             else:
-                synced = await bot.sync_commands()
-                logger.info(f"{log_prefix}Synced {len(synced) if synced else 0} commands globally")
-        except Exception as e:
-            logger.error(f"{log_prefix}Error syncing commands: {e}")
-            import traceback
-            traceback.print_exc()
+                # New command, needs to be created
+                logger.info(f"{log_prefix}Command '{cmd_name}' is new, will create")
+                commands_to_update.append(cmd_data)
+        
+        # Next, find commands to delete (existing but not in our desired list)
+        for cmd_name, cmd_data in existing_command_dict.items():
+            if cmd_name not in desired_commands:
+                logger.info(f"{log_prefix}Command '{cmd_name}' is no longer needed, will delete")
+                command_ids_to_delete.append(cmd_data["id"])
+        
+        # Delete commands that are no longer needed
+        for cmd_id in command_ids_to_delete:
+            try:
+                if guild:
+                    await bot.http.delete_guild_command(bot_id, guild_id, cmd_id)
+                else:
+                    await bot.http.delete_global_command(bot_id, cmd_id)
+                logger.info(f"{log_prefix}Deleted command ID: {cmd_id}")
+                # Rate limit prevention
+                await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"{log_prefix}Error deleting command: {e}")
+        
+        # Now register/update commands in batches to avoid rate limits
+        if commands_to_update:
+            logger.info(f"{log_prefix}Updating {len(commands_to_update)} commands...")
             
+            # Convert to JSON format
+            commands_json = json.dumps(commands_to_update)
+            
+            try:
+                # Update/create all commands in one batch
+                if guild:
+                    result = await bot.http.bulk_upsert_guild_commands(bot_id, guild_id, commands_to_update)
+                else:
+                    result = await bot.http.bulk_upsert_global_commands(bot_id, commands_to_update)
+                
+                logger.info(f"{log_prefix}Successfully updated {len(result)} commands")
+            except Exception as e:
+                logger.error(f"{log_prefix}Error updating commands: {e}")
+        else:
+            logger.info(f"{log_prefix}No commands need updating")
+        
+        logger.info(f"{log_prefix}Command registration complete")
+        
     except Exception as e:
-        logger.error(f"Error in register_commands_with_discord: {e}")
+        logger.error(f"Error in smart_register_commands: {e}")
         import traceback
         traceback.print_exc()
 
 async def main():
-    logger.info("Discord Bot Command Registration Fix")
-    logger.info("==================================")
+    logger.info("Smart Discord Bot Command Registration")
+    logger.info("====================================")
     
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
@@ -446,19 +467,18 @@ async def main():
         async def on_ready():
             logger.info(f"Bot is ready! Logged in as {bot.user}")
             
-            # First, try to register commands for each guild specifically
+            # First, register commands for each guild specifically
             for guild in bot.guilds:
                 logger.info(f"Registering commands for guild: {guild.name} (ID: {guild.id})")
-                await register_commands_with_discord(bot, guild)
-                # Wait between each guild to avoid rate limits
-                await asyncio.sleep(5)
+                await smart_register_commands(bot, guild)
+                # Wait between guilds to avoid rate limits
+                await asyncio.sleep(2)
             
-            # Also register commands globally as a fallback
-            logger.info("Registering commands globally as a fallback")
-            await register_commands_with_discord(bot)
+            # Also register commands globally (if needed)
+            logger.info("Finished registering guild-specific commands")
             
-            logger.info("Command registration complete!")
-            logger.info("Bot will continue running. Press Ctrl+C to stop.")
+            logger.info("Command registration complete! Disconnecting...")
+            await bot.close()
         
         # Start the bot
         logger.info("Starting the bot...")
@@ -470,12 +490,11 @@ async def main():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    # Run the main function in the event loop
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
+        logger.info("Script stopped by user")
     except Exception as e:
-        logger.error(f"Error running bot: {e}")
+        logger.error(f"Error running script: {e}")
         import traceback
         traceback.print_exc()

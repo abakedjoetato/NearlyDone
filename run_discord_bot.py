@@ -51,8 +51,17 @@ def start_bot():
     # Ensure temp directory exists
     Path('temp').mkdir(exist_ok=True)
     
-    # Use the fixed command registration script
-    bot_script = 'final_command_fix.py'
+    # First, register commands using the smart registration approach
+    logger.info("Registering commands with Discord...")
+    try:
+        # We run this separately first to ensure commands are registered, even if the main bot fails
+        subprocess.run(['python', 'smart_register_commands.py'], check=True, timeout=60)
+        logger.info("Command registration completed successfully")
+    except subprocess.SubprocessError as e:
+        logger.warning(f"Command registration failed: {e}. Continuing anyway...")
+    
+    # Now start the actual bot script - use bot_main.py which has all the core logic
+    bot_script = 'bot_main.py'
     
     # Start the bot in a separate process
     process = subprocess.Popen(

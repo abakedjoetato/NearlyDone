@@ -188,7 +188,7 @@ class ServerCommands(commands.Cog):
             logger.error(traceback.format_exc())
             await ctx.respond(f"⚠️ Error getting server info: {str(e)}", ephemeral=True)
     
-    @server_group.command(name="remove", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@server_group.command(name="remove", contexts=[discord.InteractionContextType.guild],)
+    @server_group.command(name="remove", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install])
     @commands.has_permissions(manage_guild=True)
     async def remove_server(
         self, ctx, 

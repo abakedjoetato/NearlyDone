@@ -1126,9 +1126,9 @@ async def commands_menu(ctx):
 
 # Import all cog classes for easier access
 # Using refactored commands with proper slash command implementation
-from cogs.server_commands import ServerCommands
+from cogs.server_commands_refactored import ServerCommands
 from cogs.stats_commands_refactored import StatsCommands
-from cogs.killfeed_commands import KillfeedCommands
+from cogs.killfeed_commands_refactored import KillfeedCommands
 # Using our refactored mission and connection cogs
 from cogs.mission_commands_refactored import MissionCommands
 from cogs.connection_commands_refactored import ConnectionCommands

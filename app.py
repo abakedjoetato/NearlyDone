@@ -163,52 +163,32 @@ def get_bot_status():
     
     return jsonify(bot_status)
 
-# API endpoint to start the bot
+# API endpoint to start the bot using our runner
 @app.route('/api/bot/start', methods=['POST'])
-def start_bot():
-    global bot_process, bot_status
+def start_bot_api():
+    # Import our bot runner
+    from run_discord_bot import start_bot, status_bot
     
     # Check if bot is already running
-    if bot_process is not None and bot_process.poll() is None:
+    if status_bot():
         return jsonify({
             'success': False,
             'error': 'Bot is already running'
         })
     
     try:
-        # Start the bot process
-        bot_process = subprocess.Popen(
-            ['python', 'bot_main.py'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
+        # Start the bot using our runner
+        pid = start_bot()
         
-        # Update status
+        # Update status in our global bot status
         bot_status['running'] = True
         bot_status['status'] = 'Starting'
         bot_status['start_time'] = time.time()
-        bot_status['pid'] = bot_process.pid
-        
-        # Start a thread to read output
-        def read_output():
-            while bot_process.poll() is None:
-                line = bot_process.stdout.readline()
-                if line:
-                    bot_logger.info(f"BOT: {line.strip()}")
-            
-            # Process ended
-            bot_status['running'] = False
-            bot_status['status'] = f'Exited with code {bot_process.returncode}'
-            bot_status['pid'] = None
-        
-        threading.Thread(target=read_output, daemon=True).start()
+        bot_status['pid'] = pid
         
         return jsonify({
             'success': True,
-            'pid': bot_process.pid
+            'pid': pid
         })
     except Exception as e:
         return jsonify({
@@ -216,40 +196,37 @@ def start_bot():
             'error': str(e)
         })
 
-# API endpoint to stop the bot
+# API endpoint to stop the bot using our runner
 @app.route('/api/bot/stop', methods=['POST'])
-def stop_bot():
-    global bot_process, bot_status
+def stop_bot_api():
+    # Import our bot runner
+    from run_discord_bot import stop_bot, status_bot
     
     # Check if bot is running
-    if bot_process is None or bot_process.poll() is not None:
+    if not status_bot():
         return jsonify({
             'success': False,
             'error': 'Bot is not running'
         })
     
     try:
-        # Try to terminate gracefully first
-        bot_process.terminate()
+        # Stop the bot using our runner
+        result = stop_bot()
         
-        # Wait up to 5 seconds for process to end
-        for _ in range(50):
-            if bot_process.poll() is not None:
-                break
-            time.sleep(0.1)
-        
-        # If still running, kill it
-        if bot_process.poll() is None:
-            bot_process.kill()
-        
-        # Update status
-        bot_status['running'] = False
-        bot_status['status'] = f'Stopped manually'
-        bot_status['pid'] = None
-        
-        return jsonify({
-            'success': True
-        })
+        if result:
+            # Update status
+            bot_status['running'] = False
+            bot_status['status'] = 'Stopped manually'
+            bot_status['pid'] = None
+            
+            return jsonify({
+                'success': True
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to stop the bot'
+            })
     except Exception as e:
         return jsonify({
             'success': False,
@@ -270,7 +247,7 @@ logging.warning("Console test: This is a sample warning log")
 logging.error("Console test: This is a sample error log")
 logging.debug("Console test: This is a debug message")
 
-# Start Discord bot in a background thread
+# Start Discord bot in a background thread using our new runner
 def start_discord_bot():
     """Start the Discord bot in a separate thread"""
     import time
@@ -279,17 +256,23 @@ def start_discord_bot():
         # Small delay to ensure Flask is fully initialized
         time.sleep(2)
         
-        # Import the bot's main function
-        from bot_main import main as bot_main
+        # Use our new run_discord_bot.py script
+        from run_discord_bot import start_bot, stop_bot, status_bot
         
-        # Run the bot
-        bot_main()
+        # Check if bot is already running
+        if status_bot():
+            logging.info("Discord bot is already running")
+        else:
+            # Start the bot
+            pid = start_bot()
+            logging.info(f"Started Discord bot with PID: {pid}")
+            
     except Exception as e:
         logging.error(f"Error starting Discord bot: {e}")
         import traceback
         logging.error(traceback.format_exc())
 
-# Start the bot thread
+# Start the bot in a separate thread
 try:
     bot_thread = threading.Thread(target=start_discord_bot, daemon=True)
     bot_thread.start()

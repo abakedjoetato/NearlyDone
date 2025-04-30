@@ -250,16 +250,45 @@ async def on_ready():
             logger.error(traceback.format_exc())
     
     # Load all cogs
+    logger.info("Loading command cogs...")
     await load_cogs()
     
-    # Sync slash commands
-    try:
-        logger.info("Syncing slash commands...")
-        await sync_slash_commands()
-    except Exception as e:
-        logger.error(f"Error syncing slash commands: {e}")
-        if DEBUG_MODE:
-            logger.error(traceback.format_exc())
+    # Check if commands are already registered by looking for command_marker
+    marker_file = Path('temp/commands_registered.txt')
+    if marker_file.exists():
+        logger.info("Commands were previously registered, skipping sync")
+    else:
+        # Sync slash commands
+        try:
+            logger.info("Syncing slash commands to match handlers...")
+            
+            # Show the commands the bot has loaded
+            all_commands = []
+            all_commands.extend(bot.application_commands)
+            for cog_name, cog in bot.cogs.items():
+                all_commands.extend(cog.get_application_commands())
+            
+            logger.info(f"Bot has {len(all_commands)} slash commands loaded")
+            for cmd in all_commands:
+                if hasattr(cmd, 'name'):
+                    logger.info(f"- Command: {cmd.name}")
+            
+            # Only sync to guilds, not globally
+            for guild in bot.guilds:
+                logger.info(f"Syncing commands to guild: {guild.name}")
+                try:
+                    await bot.sync_commands(guild_ids=[guild.id])
+                    logger.info(f"Commands synced to {guild.name}")
+                except Exception as e:
+                    logger.error(f"Error syncing to {guild.name}: {e}")
+            
+            # Create marker file to show we've registered commands
+            with open('temp/commands_registered.txt', 'w') as f:
+                f.write(f"Commands registered at {time.ctime()}")
+        except Exception as e:
+            logger.error(f"Error syncing slash commands: {e}")
+            if DEBUG_MODE:
+                logger.error(traceback.format_exc())
     
     # Start background tasks
     check_parsers.start()

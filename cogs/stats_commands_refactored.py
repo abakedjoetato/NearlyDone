@@ -1082,3 +1082,7 @@ class StatsCommands(commands.Cog):
         except Exception as e:
             logger.error(f"Error retrieving faction statistics: {e}")
             await ctx.respond(f"❌ Error retrieving faction statistics: {e}")
+            
+def setup(bot):
+    """Add the cog to the bot directly when loaded via extension"""
+    bot.add_cog(StatsCommands(bot))

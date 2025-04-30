@@ -4,8 +4,9 @@ Discord Command Manager
 This module provides a reliable system for registering Discord slash commands
 with proper handling of subcommands, rate limits, and error conditions.
 
-It replaces the previous command sync helpers with a cleaner implementation
-that properly handles the Discord API requirements for command registration.
+This is an enhanced version with more conservative rate limit handling and 
+better error recovery to ensure commands register successfully even under
+challenging conditions.
 """
 
 import asyncio
@@ -13,6 +14,7 @@ import logging
 import time
 import json
 import math
+import random
 from typing import Dict, List, Any, Optional, Tuple, Union
 
 logger = logging.getLogger('discord.command_manager')
@@ -20,15 +22,23 @@ logger = logging.getLogger('discord.command_manager')
 # Constants for Discord API
 DISCORD_GLOBAL_ENDPOINT = '/applications/{app_id}/commands'
 DISCORD_GUILD_ENDPOINT = '/applications/{app_id}/guilds/{guild_id}/commands'
+
+# More conservative rate limits to prevent hitting Discord's actual limits
 RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_REQUESTS = 100  # max requests per minute for slash commands
-RATE_LIMIT_REMAINING_THRESHOLD = 10  # Slow down when we have fewer than this remaining
+RATE_LIMIT_REQUESTS = 50  # Using half of Discord's actual limit (usually 100) to be safe
+RATE_LIMIT_REMAINING_THRESHOLD = 15  # Slow down when we have fewer than this remaining
+
+# Add delays between requests to be extra cautious
+MIN_REQUEST_DELAY = 1.0  # seconds
+MAX_REQUEST_DELAY = 2.5  # seconds
+BATCH_DELAY = 15.0  # seconds
 
 # Track rate limit state
 rate_limit = {
     'reset_at': 0,
     'remaining': RATE_LIMIT_REQUESTS,
-    'total': RATE_LIMIT_REQUESTS
+    'total': RATE_LIMIT_REQUESTS,
+    'last_request_time': 0
 }
 
 async def register_commands(bot) -> bool:
@@ -184,16 +194,46 @@ async def register_commands_batch(bot, endpoint: str, commands: List[Dict[str, A
     try:
         logger.info(f"Batch registering {len(commands)} commands to endpoint {endpoint}")
         
+        # If we have more than 5 commands, break it down into smaller batches
+        # This helps avoid rate limits and increases reliability 
+        if len(commands) > 5:
+            logger.info(f"Breaking down batch of {len(commands)} commands into smaller batches")
+            
+            # Use smaller batches of maximum 5 commands
+            small_batch_size = 5
+            small_batches = [commands[i:i+small_batch_size] for i in range(0, len(commands), small_batch_size)]
+            
+            all_successful = True
+            for i, small_batch in enumerate(small_batches):
+                logger.info(f"Processing small batch {i+1}/{len(small_batches)} with {len(small_batch)} commands")
+                
+                # Wait between small batches
+                if i > 0:
+                    wait_time = BATCH_DELAY
+                    logger.info(f"Waiting {wait_time}s between small batches to avoid rate limits...")
+                    await asyncio.sleep(wait_time)
+                
+                # Register this small batch
+                small_batch_success = await register_commands_batch(bot, endpoint, small_batch)
+                
+                if not small_batch_success:
+                    logger.warning(f"Small batch {i+1} registration failed")
+                    all_successful = False
+            
+            return all_successful
+                
+        # For small batches, proceed with the regular approach
         # Wait for rate limits if needed
         await respect_rate_limit()
         
         http = bot.http
         
-        async def register_with_rate_limit(retry_count=0, max_retries=3):
+        async def register_with_rate_limit(retry_count=0, max_retries=5):  # Increased max retries
             nonlocal endpoint, commands
             
             try:
                 # Make the request
+                logger.info(f"Sending batch PUT request to {endpoint} with {len(commands)} commands")
                 response = await http.request('PUT', endpoint, json=commands)
                 
                 # Update rate limit info
@@ -201,43 +241,64 @@ async def register_commands_batch(bot, endpoint: str, commands: List[Dict[str, A
                 
                 # Check if successful
                 if response.status >= 200 and response.status < 300:
-                    logger.info(f"Successfully registered {len(commands)} commands")
+                    logger.info(f"✅ Successfully registered {len(commands)} commands in batch")
                     return True
                 else:
                     # If we got a rate limit response, wait and retry
                     if response.status == 429:
-                        retry_after = response.headers.get('Retry-After', 5)
-                        retry_after = float(retry_after)
-                        logger.warning(f"Rate limited, waiting {retry_after}s before retry")
+                        retry_after = 5.0  # Default value
+                        
+                        try:
+                            error_data = await response.json()
+                            if 'retry_after' in error_data:
+                                retry_after = float(error_data['retry_after']) + 2  # Add buffer
+                        except:
+                            retry_after = 5.0 * (2 ** retry_count)  # Exponential backoff
+                            
+                        logger.warning(f"⚠️ Rate limited during batch registration, waiting {retry_after:.1f}s before retry")
                         
                         # Wait for the rate limit to reset
                         await asyncio.sleep(retry_after)
                         
                         # Try again if we have retries left
                         if retry_count < max_retries:
+                            logger.info(f"Retrying batch (attempt {retry_count+1}/{max_retries})...")
                             return await register_with_rate_limit(retry_count + 1, max_retries)
                     
                     # Other errors
-                    error_json = await response.json()
-                    logger.error(f"Error registering commands: {response.status} - {error_json}")
-                    return False
+                    try:
+                        error_json = await response.json()
+                        logger.error(f"❌ Error registering commands: {response.status} - {error_json}")
+                    except:
+                        logger.error(f"❌ Error registering commands: {response.status}")
+                    
+                    # For other errors, we might still want to retry with a different approach
+                    if retry_count < max_retries:
+                        wait_time = 2 ** (retry_count + 1)  # Exponential backoff
+                        logger.warning(f"Retrying batch with delay of {wait_time}s (attempt {retry_count+1}/{max_retries})...")
+                        await asyncio.sleep(wait_time)
+                        return await register_with_rate_limit(retry_count + 1, max_retries)
+                    else:
+                        logger.error(f"❌ Batch registration failed after {max_retries} retries")
+                        return False
                     
             except Exception as e:
                 logger.error(f"Error during batch command registration: {e}")
                 
                 # Try again if we have retries left
                 if retry_count < max_retries:
-                    wait_time = 2 ** retry_count  # Exponential backoff
-                    logger.info(f"Retrying after {wait_time}s...")
+                    wait_time = 2 ** (retry_count + 1)  # Exponential backoff
+                    logger.info(f"Retrying after error in {wait_time}s (attempt {retry_count+1}/{max_retries})...")
                     await asyncio.sleep(wait_time)
                     return await register_with_rate_limit(retry_count + 1, max_retries)
                     
+                logger.error(f"❌ Batch registration failed after {max_retries} retries")
                 return False
         
         return await register_with_rate_limit()
         
     except Exception as e:
-        logger.error(f"Error in batch command registration: {e}")
+        logger.error(f"Unhandled error in batch command registration: {e}")
         return False
 
 async def register_commands_individually(bot, commands: List[Dict[str, Any]], guild_id: Optional[int] = None) -> bool:
@@ -266,52 +327,118 @@ async def register_commands_individually(bot, commands: List[Dict[str, Any]], gu
     successful = 0
     total = len(commands)
     
-    for i, cmd in enumerate(commands):
-        # Check rate limits before each request
-        await respect_rate_limit()
+    # Small batch size for slower registration with better reliability
+    batch_size = 2
+    batches = [commands[i:i+batch_size] for i in range(0, len(commands), batch_size)]
+    
+    for batch_index, batch in enumerate(batches):
+        logger.info(f"Processing batch {batch_index+1}/{len(batches)}")
         
-        try:
-            # Log command registration attempt
-            cmd_name = cmd.get('name', 'unknown')
-            logger.info(f"Registering command {i+1}/{total}: {cmd_name}")
+        # Extra wait time between batches to avoid rate limits
+        if batch_index > 0:
+            batch_wait = random.uniform(BATCH_DELAY * 0.8, BATCH_DELAY * 1.2)  # Randomize to avoid patterns
+            logger.info(f"Waiting {batch_wait:.1f}s between batches...")
+            await asyncio.sleep(batch_wait)
+        
+        for i, cmd in enumerate(batch):
+            # Check rate limits before each request
+            await respect_rate_limit()
             
-            # Send the command to Discord
-            endpoint = f"{base_endpoint}"
-            response = await http.request('POST', endpoint, json=cmd)
-            
-            # Update rate limit tracking
-            update_rate_limit_from_headers(response.headers)
-            
-            # Check if successful
-            if response.status >= 200 and response.status < 300:
-                successful += 1
-                logger.info(f"✓ Command {cmd_name} registered successfully")
-            else:
-                # Handle errors
-                try:
-                    error_data = await response.json()
-                    logger.error(f"✗ Failed to register command {cmd_name}: {response.status} - {error_data}")
-                except:
-                    logger.error(f"✗ Failed to register command {cmd_name}: {response.status}")
-            
-            # Add a small delay to avoid overwhelming the API
-            await asyncio.sleep(0.5)
-            
-        except Exception as e:
-            logger.error(f"Error registering command: {e}")
+            try:
+                # Log command registration attempt
+                cmd_name = cmd.get('name', 'unknown')
+                logger.info(f"Registering command {batch_index*batch_size+i+1}/{total}: {cmd_name}")
+                
+                # Retry logic for individual commands
+                max_retries = 3
+                for retry in range(max_retries + 1):
+                    try:
+                        # Send the command to Discord
+                        endpoint = f"{base_endpoint}"
+                        response = await http.request('POST', endpoint, json=cmd)
+                        
+                        # Update rate limit tracking
+                        update_rate_limit_from_headers(response.headers)
+                        
+                        # Check if successful
+                        if response.status >= 200 and response.status < 300:
+                            successful += 1
+                            logger.info(f"✓ Command {cmd_name} registered successfully")
+                            break  # Exit retry loop on success
+                        elif response.status == 429:  # Rate limited
+                            retry_after = 5.0
+                            try:
+                                error_data = await response.json()
+                                if 'retry_after' in error_data:
+                                    retry_after = float(error_data['retry_after']) + 1  # Add buffer
+                            except:
+                                # Use default + exponential backoff
+                                retry_after = 5.0 * (2 ** retry)
+                                
+                            logger.warning(f"Rate limited registering {cmd_name}. Waiting {retry_after:.1f}s...")
+                            await asyncio.sleep(retry_after)
+                            # Don't increment retry counter for rate limits
+                            continue
+                        else:
+                            # Handle other errors
+                            try:
+                                error_data = await response.json()
+                                logger.error(f"✗ Failed to register command {cmd_name}: {response.status} - {error_data}")
+                            except:
+                                logger.error(f"✗ Failed to register command {cmd_name}: {response.status}")
+                                
+                            if retry < max_retries:
+                                wait_time = 2 ** (retry + 1)  # Exponential backoff
+                                logger.warning(f"Retrying command {cmd_name} in {wait_time}s... (Attempt {retry+1}/{max_retries})")
+                                await asyncio.sleep(wait_time)
+                            else:
+                                logger.error(f"Failed to register command {cmd_name} after {max_retries} retries")
+                    except Exception as req_err:
+                        logger.error(f"Error in command request: {req_err}")
+                        if retry < max_retries:
+                            wait_time = 2 ** (retry + 1)  # Exponential backoff
+                            logger.warning(f"Retrying after error in {wait_time}s... (Attempt {retry+1}/{max_retries})")
+                            await asyncio.sleep(wait_time)
+                        else:
+                            logger.error(f"Failed after {max_retries} retries")
+                
+                # Add a delay between commands even in the same batch
+                cmd_delay = random.uniform(MIN_REQUEST_DELAY, MAX_REQUEST_DELAY)
+                logger.debug(f"Waiting {cmd_delay:.1f}s between commands...")
+                await asyncio.sleep(cmd_delay)
+                
+            except Exception as e:
+                logger.error(f"Unhandled error registering command: {e}")
     
     # Consider successful if at least half of commands registered
     success_rate = successful / total if total > 0 else 0
     logger.info(f"Registered {successful}/{total} commands ({success_rate:.1%})")
-    return success_rate >= 0.5
+    
+    # More nuanced success criteria
+    if success_rate >= 0.9:
+        logger.info("✅ Command registration highly successful")
+        return True
+    elif success_rate >= 0.5:
+        logger.warning("⚠️ Partial command registration success")
+        return True
+    else:
+        logger.error("❌ Command registration failed (most commands not registered)")
+        return False
 
 async def respect_rate_limit():
     """
-    Wait if we're approaching rate limits
+    Wait if we're approaching rate limits, with enforced delays between requests
     """
     global rate_limit
     
     current_time = time.time()
+    
+    # Enforce minimum time between requests regardless of rate limit
+    time_since_last = current_time - rate_limit.get('last_request_time', 0)
+    if time_since_last < MIN_REQUEST_DELAY:
+        wait_time = MIN_REQUEST_DELAY - time_since_last
+        await asyncio.sleep(wait_time)
+        current_time = time.time()  # Update current time after waiting
     
     # If we're past the reset time, reset our counters
     if current_time > rate_limit['reset_at']:
@@ -322,14 +449,21 @@ async def respect_rate_limit():
     if rate_limit['remaining'] < RATE_LIMIT_REMAINING_THRESHOLD:
         wait_time = max(0, rate_limit['reset_at'] - current_time)
         if wait_time > 0:
-            logger.warning(f"Rate limit approaching, waiting {wait_time:.1f}s")
+            logger.warning(f"Rate limit approaching ({rate_limit['remaining']}/{rate_limit['total']} remaining), waiting {wait_time:.1f}s")
             await asyncio.sleep(wait_time)
             # Reset after waiting
             rate_limit['remaining'] = rate_limit['total']
             rate_limit['reset_at'] = time.time() + RATE_LIMIT_WINDOW
+            current_time = time.time()  # Update current time after waiting
     
-    # Decrement remaining
+    # Decrement remaining and update last request time
     rate_limit['remaining'] -= 1
+    rate_limit['last_request_time'] = current_time
+    
+    # Log rate limit status every 10 requests
+    if rate_limit['remaining'] % 10 == 0:
+        time_to_reset = max(0, rate_limit['reset_at'] - current_time)
+        logger.info(f"Rate limit status: {rate_limit['remaining']}/{rate_limit['total']} remaining, resets in {time_to_reset:.1f}s")
 
 def update_rate_limit_from_headers(headers):
     """

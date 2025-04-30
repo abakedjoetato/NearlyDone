@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-terminal me-2"></i> Bot Console
+                    </h5>
+                    <div>
+                        <button id="clear-console" class="btn btn-sm btn-outline-light me-2">
+                            <i class="fas fa-trash-alt me-1"></i> Clear
+                        </button>
+                        <button id="auto-scroll-toggle" class="btn btn-sm btn-outline-light active">
+                            <i class="fas fa-arrow-down me-1"></i> Auto-scroll
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="console-container" class="bg-dark text-light p-3" style="height: 500px; overflow-y: auto; font-family: 'Courier New', monospace;">
+                        <pre id="console-output" class="mb-0">Connecting to bot console...</pre>
+                    </div>
+                </div>
+                <div class="card-footer bg-light">
+                    <div class="d-flex">
+                        <input type="text" id="command-input" class="form-control me-2" placeholder="Enter command (monitoring only, no execution)" disabled>
+                        <button id="send-command" class="btn btn-primary" disabled>
+                            <i class="fas fa-paper-plane me-1"></i> Send
+                        </button>
+                    </div>
+                    <small class="text-muted mt-1 d-block">Note: This is a read-only console view. Execute commands through Discord.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const consoleOutput = document.getElementById('console-output');
+        const consoleContainer = document.getElementById('console-container');
+        const clearConsoleBtn = document.getElementById('clear-console');
+        const autoScrollToggle = document.getElementById('auto-scroll-toggle');
+        
+        let autoScroll = true;
+        let lastLogId = 0;
+        
+        // Function to auto-scroll to bottom
+        function scrollToBottom() {
+            if (autoScroll) {
+                consoleContainer.scrollTop = consoleContainer.scrollHeight;
+            }
+        }
+        
+        // Toggle auto-scroll
+        autoScrollToggle.addEventListener('click', function() {
+            autoScroll = !autoScroll;
+            this.classList.toggle('active', autoScroll);
+            if (autoScroll) {
+                scrollToBottom();
+            }
+        });
+        
+        // Clear console
+        clearConsoleBtn.addEventListener('click', function() {
+            consoleOutput.textContent = 'Console cleared at ' + new Date().toLocaleTimeString();
+        });
+        
+        // Function to fetch new logs
+        function fetchConsoleUpdates() {
+            fetch('/api/console-logs?since=' + lastLogId)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.logs && data.logs.length > 0) {
+                        // Append new logs
+                        const logLines = data.logs.map(log => 
+                            `[${new Date(log.timestamp * 1000).toLocaleTimeString()}] ${log.level}: ${log.message}`
+                        ).join('\n');
+                        
+                        // If this is the first fetch, replace the connecting message
+                        if (consoleOutput.textContent.includes('Connecting to bot console...')) {
+                            consoleOutput.textContent = logLines;
+                        } else {
+                            consoleOutput.textContent += '\n' + logLines;
+                        }
+                        
+                        // Update the last log ID
+                        lastLogId = data.logs[data.logs.length - 1].id;
+                        
+                        // Scroll to bottom if auto-scroll is enabled
+                        scrollToBottom();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching console logs:', error);
+                });
+        }
+        
+        // Initial load
+        fetchConsoleUpdates();
+        
+        // Set up polling
+        setInterval(fetchConsoleUpdates, 1000);
+        
+        // Manual scroll detection
+        consoleContainer.addEventListener('scroll', function() {
+            // If user scrolls up manually, disable auto-scroll
+            const isScrolledToBottom = 
+                consoleContainer.scrollHeight - consoleContainer.clientHeight <= 
+                consoleContainer.scrollTop + 50; // Adding small buffer
+            
+            if (!isScrolledToBottom && autoScroll) {
+                autoScroll = false;
+                autoScrollToggle.classList.remove('active');
+            }
+        });
+    });
+</script>
+{% endblock %}

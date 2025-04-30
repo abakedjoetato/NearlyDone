@@ -706,8 +706,11 @@ class NotificationCog(commands.Cog):
     
     @notifications_group.command(
         name="player_count",
-        description="Configure voice channel player count updates"
-    )
+        description="Configure voice channel player count updates", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@notifications_group.command(
+        name="player_count",
+        description="Configure voice channel player count updates", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@notifications_group.command(
+        name="player_count",
+        description="Configure voice channel player count updates", contexts=[discord.InteractionContextType.guild],)
     @commands.has_permissions(manage_channels=True)
     @guild_only()
     @premium_tier_required(tier=1)  # Premium feature
@@ -767,16 +770,10 @@ class NotificationCog(commands.Cog):
             embed.add_field(
                 name="📝 Related Commands",
                 value="`/notifications status` - Check notification settings",
-                inline=False
-            )
-            
-            await ctx.respond(embed=embed)
-            
-        except Exception as e:
-            logger.error(f"Error setting up player count: {e}")
-            await ctx.respond(f"❌ Error setting up player count: {str(e)}")
-    
-    @notifications_group.command(
+            @notifications_group.command(
+        name="status",
+        description="Check current notification settings",
+        contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@notifications_group.command(
         name="status",
         description="Check current notification settings",
         contexts=[discord.InteractionContextType.guild]

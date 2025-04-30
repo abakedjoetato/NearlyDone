@@ -13,13 +13,13 @@ import time
 
 # Import all cog classes to avoid circular imports
 from cogs.admin_commands import AdminCommands
-from cogs.server_commands_refactored import ServerCommands
-from cogs.stats_commands_refactored import StatsCommands
-from cogs.killfeed_commands_refactored import KillfeedCommands
+# from cogs.server_commands_refactored import ServerCommands
+# from cogs.stats_commands_refactored import StatsCommands
+# from cogs.killfeed_commands_refactored import KillfeedCommands
 from cogs.mission_commands_refactored import MissionCommands
 from cogs.connection_commands import ConnectionCommands
-from cogs.faction_commands import FactionCommands
-from cogs.notification_cog import NotificationCog
+# from cogs.faction_commands import FactionCommands
+# from cogs.notification_cog import NotificationCog
 from cogs.rivalry_commands import RivalryCommands
 from cogs.analytics_cog import AnalyticsCog
 
@@ -1129,11 +1129,12 @@ async def commands_menu(ctx):
 from cogs.server_commands_refactored import ServerCommands
 from cogs.stats_commands_refactored import StatsCommands
 from cogs.killfeed_commands_refactored import KillfeedCommands
-from cogs.mission_commands_refactored import MissionCommands
+# Temporarily commenting out problematic cogs during debugging
+# from cogs.mission_commands_refactored import MissionCommands
 from cogs.connection_commands import ConnectionCommands
 from cogs.admin_commands import AdminCommands
-from cogs.faction_commands import FactionCommands
-from cogs.notification_cog import NotificationCog
+# from cogs.faction_commands import FactionCommands
+# from cogs.notification_cog import NotificationCog
 
 # Import database connection
 from database.connection import Database
@@ -1211,15 +1212,17 @@ async def on_ready():
     
     # Ensure mission command group has the correct name
     # This fixes the inconsistency between "mission" and "missions"
-    try:
-        from cogs.mission_commands_refactored import mission_group
-        if hasattr(mission_group, 'name') and mission_group.name != "missions":
-            logger.warning(f"Fixing mission group name from '{mission_group.name}' to 'missions'")
-            mission_group.name = "missions"
-    except ImportError:
-        logger.warning("Could not import mission_group to check name")
-    except Exception as e:
-        logger.error(f"Error checking mission group name: {e}")
+    # Currently disabled during debugging
+    # try:
+    #     from cogs.mission_commands_refactored import mission_group
+    #     if hasattr(mission_group, 'name') and mission_group.name != "missions":
+    #         logger.warning(f"Fixing mission group name from '{mission_group.name}' to 'missions'")
+    #         mission_group.name = "missions"
+    # except ImportError:
+    #     logger.warning("Could not import mission_group to check name")
+    # except Exception as e:
+    #     logger.error(f"Error checking mission group name: {e}")
+    pass
     
     # Use the most reliable command registration approach
     try:
@@ -1293,13 +1296,11 @@ async def load_cogs():
         StatsCommands,
         KillfeedCommands,
         ConnectionCommands,
-        MissionCommands,
-        AdminCommands,
-        FactionCommands,
-        NotificationCog,
-        RivalryCommands,
-        # Add the analytics cog for advanced statistics
-        AnalyticsCog
+        # MissionCommands, # Temporarily disabled due to syntax errors
+        AdminCommands
+        # FactionCommands, # Temporarily disabled due to syntax errors
+        # NotificationCog, # Temporarily disabled due to syntax errors
+        # Add other cogs below as needed
     ]
     
     loaded_count = 0

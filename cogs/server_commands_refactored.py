@@ -188,7 +188,7 @@ class ServerCommands(commands.Cog):
             logger.error(traceback.format_exc())
             await ctx.respond(f"⚠️ Error getting server info: {str(e)}", ephemeral=True)
     
-    @server_group.command(name="remove")
+    @server_group.command(name="remove", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@server_group.command(name="remove", contexts=[discord.InteractionContextType.guild],)
     @commands.has_permissions(manage_guild=True)
     async def remove_server(
         self, ctx, 
@@ -281,9 +281,10 @@ class ServerCommands(commands.Cog):
             await Server.update(self.db, server.get("_id", ""), updates)
             
             display_name = new_name if new_name else name
-            embed = create_success_embed(
-                f"Server '{display_name}' updated",
-                "The server configuration has been updated."
+            embed = discord.Embed(
+                title=f"Server {display_name} Updated",
+                description="The server configuration has been updated.",
+                color=discord.Color.green()
             )
             await ctx.respond(embed=embed)
             

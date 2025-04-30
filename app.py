@@ -314,35 +314,16 @@ def start_discord_bot():
             except Exception as e:
                 logging.warning(f"Error checking existing bot PID: {e}")
         
-        # First register commands
-        logging.info("Registering Discord commands...")
-        try:
-            # Run in a separate process and capture output
-            registration = subprocess.run(
-                [sys.executable, 'smart_register_commands.py'],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            for line in registration.stdout.splitlines():
-                logging.info(f"CMD_REG: {line}")
-            logging.info("Command registration completed successfully")
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Command registration failed with code {e.returncode}")
-            for line in e.output.splitlines():
-                logging.error(f"CMD_REG_ERROR: {line}")
-            # Continue anyway as we still want to start the bot
-        
-        # Then start the actual bot process
-        logging.info("Starting bot process...")
+        # Use the new combined registration and bot launcher
+        logging.info("Starting registration and bot process...")
         log_file = os.path.join('logs', 'bot_output.log')
         
         # Ensure the logs directory exists
         os.makedirs('logs', exist_ok=True)
         
-        # Start the process
+        # Start the process using our new script
         bot_process = subprocess.Popen(
-            [sys.executable, 'bot_main.py'],
+            [sys.executable, 'register_and_start.py'],
             stdout=open(log_file, 'a'),
             stderr=subprocess.STDOUT,
             start_new_session=True  # Detach from parent process

@@ -402,8 +402,9 @@ class FactionCommands(commands.Cog):
         if str(member.id) == faction.leader_id:
             await ctx.respond("⚠️ You can't remove yourself as the faction leader. Use `/faction_leave` instead.", ephemeral=True)
             return
-         @faction_group.command(name="transfer", description="Transfer faction leadership to another member", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="transfer", description="Transfer faction leadership to another member",@faction_group.command(name="transfer", description="Transfer faction leadership to another member", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="transfer", description="Transfer faction leadership to another member", contexts=[discord.InteractionContextType.guild],)
-            faction_role = discord.utils.get(ctx.guild.roles, id=int(faction.role_id)) if faction.role_id else None
+            # Remove faction role
+            try:
+                faction_role = discord.utils.get(ctx.guild.roles, id=int(faction.role_id)) if faction.role_id else None
             if faction_role:
                 await member.remove_roles(faction_role)
         except Exception as e:

@@ -305,7 +305,7 @@ async def load_cogs():
         logger.error(f"Cogs directory not found at {cogs_dir}")
         return
     
-    # First try to load our refactored cogs
+    # First try to load our refactored cogs and any new command cogs
     priority_cogs = [
         "admin_commands",
         "server_commands_refactored",
@@ -313,19 +313,24 @@ async def load_cogs():
         "killfeed_commands_refactored",
         "mission_commands_refactored",
         "connection_commands_refactored",
+        # Add background commands, which demonstrate command processing in background
+        "background_commands",
+        # Keep faction commands last as it has issues
         "faction_commands"
     ]
     
     for cog_name in priority_cogs:
         try:
-            # Try with _refactored suffix first
+            # Try loading the cog
             module_name = f"cogs.{cog_name}"
             await bot.load_extension(module_name)
             logger.info(f"Loaded cog: {module_name}")
             cogs_loaded += 1
         except Exception as e:
-            # Try without _refactored suffix if that fails
+            # Log the error
             logger.warning(f"Error loading cog {module_name}: {e}")
+            
+            # Try without _refactored suffix if that fails
             try:
                 base_name = cog_name.replace("_refactored", "")
                 if base_name != cog_name:  # Only try if different
@@ -338,7 +343,14 @@ async def load_cogs():
                 if DEBUG_MODE:
                     logger.error(traceback.format_exc())
     
-    logger.info(f"Loaded {cogs_loaded} cogs")
+    # These are the core cogs needed for basic functionality
+    required_cogs = ["server_commands_refactored", "background_commands"]
+    
+    # Check if at least the required cogs were loaded
+    if cogs_loaded == 0:
+        logger.error("No cogs were loaded! Bot will have no commands.")
+    else:
+        logger.info(f"Loaded {cogs_loaded} cogs successfully")
 
 # Background task: Check and run parsers
 @tasks.loop(minutes=5)

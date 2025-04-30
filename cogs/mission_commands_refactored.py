@@ -27,6 +27,8 @@ class MissionCommands(commands.Cog):
         # We'll store active tracking settings here
         self.tracking_enabled = {}  # guild_id -> enabled boolean
         self.mission_channels = {}  # guild_id -> channel_id
+        self.tracking_tasks = {}    # guild_id -> asyncio task
+        self.mission_group = mission_group
         
     async def cog_load(self):
         """Called when the cog is loaded"""
@@ -37,11 +39,47 @@ class MissionCommands(commands.Cog):
         
         # Load existing mission tracking settings
         await self.load_tracking_settings()
+        
+        # Start tracking tasks
+        await self.bot.wait_until_ready()
+        await self.start_tracking_tasks()
     
     # This function is needed to expose the commands to the bot
     def get_commands(self):
         """Return all commands this cog provides"""
         return [mission_group]
+        
+    async def start_tracking_tasks(self):
+        """Start mission tracking tasks for all enabled guilds"""
+        if not self.db:
+            logger.error("Database not available for starting mission tracking tasks")
+            return
+            
+        try:
+            # Start tracking for each enabled guild
+            for guild_id, enabled in self.tracking_enabled.items():
+                if not enabled:
+                    continue
+                    
+                # Skip if task already exists
+                if guild_id in self.tracking_tasks and not self.tracking_tasks[guild_id].done():
+                    continue
+                    
+                # Get the channel ID
+                channel_id = self.mission_channels.get(guild_id)
+                if not channel_id:
+                    continue
+                    
+                # Start a new tracking task
+                task = self.bot.loop.create_task(
+                    self.track_mission_events(guild_id, channel_id),
+                    name=f"mission_tracker_{guild_id}"
+                )
+                self.tracking_tasks[guild_id] = task
+                
+            logger.info(f"Started mission tracking for {len(self.tracking_tasks)} guilds")
+        except Exception as e:
+            logger.error(f"Error starting mission tracking tasks: {e}")
     
     async def load_tracking_settings(self):
         """Load mission tracking settings from the database"""
@@ -367,6 +405,152 @@ class MissionCommands(commands.Cog):
         except Exception as e:
             logger.error(f"Error checking mission status: {e}")
             await ctx.respond(f"❌ Error checking mission status: {str(e)}", ephemeral=True)
+            
+    async def track_mission_events(self, guild_id, channel_id):
+        """
+        Background task to track mission events for a guild and send notifications
+        
+        Args:
+            guild_id: Guild ID as string
+            channel_id: Discord channel ID to send notifications to
+        """
+        # Set task name for identification
+        task_name = f"mission_tracker_{guild_id}"
+        asyncio.current_task().set_name(task_name)
+        
+        logger.info(f"Started mission tracker for guild {guild_id} to channel {channel_id}")
+        
+        # Track the last event we've seen
+        last_event_time = datetime.utcnow() - timedelta(minutes=5)  # Start with events from last 5 minutes
+        
+        try:
+            while True:
+                try:
+                    # Check if tracking is still enabled for this guild
+                    if guild_id not in self.tracking_enabled or not self.tracking_enabled[guild_id]:
+                        logger.debug(f"Mission tracking disabled for guild {guild_id}, stopping tracker")
+                        return
+                        
+                    # Check if channel ID has changed
+                    current_channel_id = self.mission_channels.get(guild_id)
+                    if current_channel_id != channel_id:
+                        if current_channel_id:
+                            # Channel changed, restart with new channel
+                            logger.debug(f"Mission channel changed for guild {guild_id}, restarting tracker")
+                            self.bot.loop.create_task(
+                                self.track_mission_events(guild_id, current_channel_id),
+                                name=task_name
+                            )
+                            return
+                        else:
+                            # Channel removed, stop tracking
+                            logger.debug(f"Mission channel removed for guild {guild_id}, stopping tracker")
+                            return
+                    
+                    # Get the channel
+                    channel = self.bot.get_channel(int(channel_id))
+                    if not channel:
+                        logger.warning(f"Could not find channel {channel_id} for guild {guild_id}")
+                        await asyncio.sleep(60)  # Longer sleep on error
+                        continue
+                    
+                    # Get servers for this guild
+                    servers = await get_guild_servers(self.db, guild_id)
+                    
+                    if not servers:
+                        logger.debug(f"No servers found for guild {guild_id}")
+                        await asyncio.sleep(60)
+                        continue
+                        
+                    server_ids = [str(server["_id"]) for server in servers]
+                    
+                    # Query for new mission events
+                    collection = await self.db.get_collection("server_events")
+                    events_query = {
+                        "server_id": {"$in": server_ids},
+                        "timestamp": {"$gt": last_event_time},
+                        "event_type": {"$in": ["mission", "mission_complete", "airdrop", "helicrash", "trader"]}
+                    }
+                    
+                    cursor = collection.find(events_query).sort("timestamp", 1)
+                    events = await cursor.to_list(None)
+                    
+                    # Process each new event
+                    for event in events:
+                        # Update the last event time
+                        event_time = event.get("timestamp")
+                        if event_time and event_time > last_event_time:
+                            last_event_time = event_time
+                            
+                        # Get server info
+                        server_id = event.get("server_id")
+                        server = next((s for s in servers if str(s["_id"]) == server_id), None)
+                        
+                        if not server:
+                            continue
+                            
+                        server_name = server.get("name", "Unknown Server")
+                        
+                        # Check if this is a mission event
+                        event_type = event.get("event_type")
+                        
+                        # Create appropriate embed based on event type
+                        if event_type in ["mission", "mission_complete"]:
+                            # This is a mission event
+                            embed = create_mission_embed(
+                                event, 
+                                active_status=(event_type == "mission"),
+                                display_location=True
+                            )
+                        else:
+                            # This is another type of event (airdrop, helicrash, etc.)
+                            title = event_type.replace("_", " ").title()
+                            description = f"New {title} event on {server_name}"
+                            
+                            embed = discord.Embed(
+                                title=f"{title} Event",
+                                description=description,
+                                color=discord.Color.gold(),
+                                timestamp=event_time
+                            )
+                            
+                            # Add location if available
+                            location = event.get("location")
+                            if location:
+                                embed.add_field(
+                                    name="Location",
+                                    value=f"Coordinates: {location.get('x')}, {location.get('y')}",
+                                    inline=True
+                                )
+                                
+                            embed.add_field(
+                                name="Server",
+                                value=server_name,
+                                inline=True
+                            )
+                            
+                            # Add footer
+                            embed.set_footer(text=f"Event ID: {event.get('_id')}")
+                        
+                        # Send the embed to the channel
+                        await channel.send(embed=embed)
+                        
+                    # Log how many events we processed
+                    if events:
+                        logger.debug(f"Processed {len(events)} new mission events for guild {guild_id}")
+                    
+                    # Sleep before next check
+                    await asyncio.sleep(30)
+                    
+                except Exception as e:
+                    logger.error(f"Error in mission tracker for guild {guild_id}: {e}")
+                    await asyncio.sleep(60)  # Longer sleep on error
+                    
+        except asyncio.CancelledError:
+            logger.info(f"Mission tracker for guild {guild_id} was cancelled")
+            return
+        except Exception as e:
+            logger.error(f"Fatal error in mission tracker for guild {guild_id}: {e}")
             
     @mission_group.command(
         name="test",

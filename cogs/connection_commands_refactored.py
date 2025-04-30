@@ -41,7 +41,8 @@ class ConnectionCommands(commands.Cog):
     # This function is needed to expose the commands to the bot
     def get_commands(self):
         """Return all commands this cog provides"""
-        return [connection_group]
+        # Don't return a list, return the group directly to avoid 'await' expression error
+        return connection_group
     
     async def initialize_connection_trackers(self):
         """Initialize connection trackers for all configured servers"""

@@ -47,7 +47,8 @@ class MissionCommands(commands.Cog):
     # This function is needed to expose the commands to the bot
     def get_commands(self):
         """Return all commands this cog provides"""
-        return [mission_group]
+        # Don't return a list, return the group directly to avoid 'await' expression error
+        return mission_group
         
     async def start_tracking_tasks(self):
         """Start mission tracking tasks for all enabled guilds"""

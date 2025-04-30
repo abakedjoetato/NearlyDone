@@ -29,7 +29,8 @@ class ServerCommands(commands.Cog):
     
     def get_commands(self):
         """Returns the slash command group for this cog"""
-        return [server_group]
+        # Don't return a list, return the group directly to avoid 'await' expression error
+        return server_group
         
     async def cog_load(self):
         """Called when the cog is loaded. Safe to use async code here."""

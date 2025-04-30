@@ -298,7 +298,8 @@ class FactionCommands(commands.Cog):
                     new_nickname = new_nickname[:32]
                 await member.edit(nick=new_nickname)
         except discord.Forbidden:
-            await ctx.respond(f"✅ {memb@faction_group.command(name="leave", description="Leave your current faction", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="leave", description="Leave your current faction", contexts=[discord.Int@faction_group.command(name="leave", description="Leave your current faction", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="leave", description="Leave your current faction", contexts=[discord.InteractionContextType.guild],)     except Exception as e:
+            await ctx.respond(f"✅ {member.mention} has been added to the faction, but I couldn't update their nickname due to missing permissions", ephemeral=True)
+        except Exception as e:
             await ctx.respond(f"✅ {member.mention} has been added to the faction, but I couldn't update their nickname: {e}", ephemeral=True)
             
         # Send success message
@@ -352,7 +353,7 @@ class FactionCommands(commands.Cog):
                 
             await ctx.respond(f"✅ You have left faction '{faction.name}' and it has been deleted as you were the last member.")
             return
-         @faction_group.command(name="remove", description="Remove a member from your faction", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="remove", description="Remove a member from your faction", contexts=[dis@faction_group.command(name="remove", description="Remove a member from your faction", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="remove", description="Remove a member from your faction", contexts=[discord.InteractionContextType.guild],)     
+        
         # Remove the faction role
         try:
             faction_role = discord.utils.get(ctx.guild.roles, id=int(faction.role_id)) if faction.role_id else None

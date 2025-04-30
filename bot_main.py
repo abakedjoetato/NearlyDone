@@ -63,32 +63,70 @@ bot = commands.Bot(
 # Command to register all slash commands to Discord
 async def sync_slash_commands():
     """Register all slash commands to Discord with reliable rate limit handling"""
-    logger.info("Starting slash command synchronization")
+    logger.info("Starting slash command synchronization with guild-specific approach")
     
-    try:
-        # Use our new DiscordCommandManager for reliable registration
-        from utils.discord_command_manager import register_commands
-        logger.info("Using DiscordCommandManager for command registration")
-        
-        result = await register_commands(bot)
-        if result:
-            logger.info("✅ Commands successfully registered")
-            return True
-        else:
-            logger.warning("❌ Command registration failed")
-            return False
-    except Exception as e:
-        logger.error(f"❌ Command registration failed with error: {e}")
-        
-        # Final fallback - try the built-in method
+    # Skip global command sync completely and focus on per-guild only
+    # This works around Discord's global rate limiting by only updating each guild individually
+    
+    guilds = bot.guilds
+    logger.info(f"Found {len(guilds)} guilds to sync commands for")
+    
+    if not guilds:
+        logger.warning("No guilds found, skipping command sync")
+        return True
+    
+    # Track success across all guilds
+    overall_success = True
+    
+    # Process each guild with large delays between them
+    for i, guild in enumerate(guilds):
         try:
-            logger.warning("⚠️ Falling back to direct bot.sync_commands()")
-            await bot.sync_commands()
-            logger.info("✅ Used built-in bot.sync_commands()")
-            return True
-        except Exception as fallback_err:
-            logger.error(f"❌ All command registration methods failed: {fallback_err}")
-            return False
+            guild_name = guild.name
+            guild_id = guild.id
+            logger.info(f"Syncing commands for guild {i+1}/{len(guilds)}: {guild_name} ({guild_id})")
+            
+            # Try to sync commands for this specific guild only
+            try:
+                # Option 1: Use built-in sync_commands for this guild
+                await bot.sync_commands(guild_ids=[guild_id])
+                logger.info(f"✅ Successfully synced commands for guild: {guild_name}")
+            except Exception as e:
+                logger.warning(f"Failed to sync commands using built-in method for guild {guild_name}: {e}")
+                
+                # Option 2: Use our custom command manager as fallback
+                try:
+                    from utils.discord_command_manager import register_commands
+                    
+                    # Register only for this specific guild
+                    logger.info(f"Using custom command manager for guild: {guild_name}")
+                    result = await register_commands(bot, guild_ids=[guild_id])
+                    
+                    if result:
+                        logger.info(f"✅ Successfully synced commands for guild using custom manager: {guild_name}")
+                    else:
+                        logger.warning(f"❌ Failed to sync commands for guild using custom manager: {guild_name}")
+                        overall_success = False
+                except Exception as custom_err:
+                    logger.error(f"❌ All methods failed for guild {guild_name}: {custom_err}")
+                    overall_success = False
+            
+            # Add a long delay between guild syncs to avoid rate limiting
+            if i < len(guilds) - 1:  # Skip delay after the last guild
+                delay = 20 + i * 5  # Increasing delay for each guild
+                logger.info(f"Waiting {delay} seconds before processing next guild...")
+                await asyncio.sleep(delay)
+                
+        except Exception as guild_err:
+            logger.error(f"Unexpected error syncing commands for guild {guild.id}: {guild_err}")
+            overall_success = False
+    
+    # Final status report
+    if overall_success:
+        logger.info("✅ Successfully registered commands for all guilds")
+    else:
+        logger.warning("⚠️ Command registration partially successful (some guilds failed)")
+    
+    return overall_success
 
 # Simple ping command
 @bot.slash_command(name="ping", description="Check the bot's response time")

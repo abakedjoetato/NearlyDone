@@ -41,21 +41,35 @@ rate_limit = {
     'last_request_time': 0
 }
 
-async def register_commands(bot) -> bool:
+async def register_commands(bot, guild_ids: List[int] = None) -> bool:
     """
     Register all slash commands to Discord with proper rate limit handling
     
     Args:
         bot: The Discord bot instance
-        
+        guild_ids: Optional list of specific guild IDs to register commands for.
+                   If provided, only these guilds will have commands registered.
+                   
     Returns:
         bool: True if commands were registered successfully, False otherwise
     """
-    logger.info("Starting command registration with enhanced handler")
+    logger.info(f"Starting command registration with enhanced handler" + 
+                (f" for specific guilds: {guild_ids}" if guild_ids else " for all guilds/global"))
     
     try:
         # Get commands payload from the bot
-        commands_payload = bot._connection._command_store.values()
+        commands_payload = bot._connection._command_store.values() if hasattr(bot._connection, '_command_store') else None
+        
+        if not commands_payload:
+            logger.warning("Could not find commands to register, bot may use a different command storage mechanism")
+            if hasattr(bot, 'application_commands'):
+                # Try py-cord's application_commands
+                commands_payload = bot.application_commands
+                logger.info(f"Using py-cord application_commands ({len(commands_payload)} commands found)")
+            else:
+                logger.error("No compatible command store found in the bot")
+                return False
+                
         if not commands_payload:
             logger.warning("No commands to register")
             return True
@@ -63,15 +77,53 @@ async def register_commands(bot) -> bool:
         # Prepare the commands for sending
         app_id = bot.application_id or bot.user.id
         
-        # First, try the batch approach (recommended)
+        # If specific guild_ids are specified, focus exclusively on those
+        if guild_ids:
+            overall_success = True
+            
+            # Process each specified guild
+            for guild_id in guild_ids:
+                logger.info(f"Registering commands for specific guild: {guild_id}")
+                
+                # For each guild, collect all commands (both global and guild-specific)
+                # Since we're registering directly to a guild, we include all commands
+                guild_cmds = []
+                
+                for cmd in commands_payload:
+                    cmd_data = extract_command_data(cmd)
+                    if cmd_data:
+                        guild_cmds.append(cmd_data)
+                
+                if guild_cmds:
+                    # Register to this specific guild
+                    endpoint = DISCORD_GUILD_ENDPOINT.format(app_id=app_id, guild_id=guild_id)
+                    logger.info(f"Registering {len(guild_cmds)} commands to guild {guild_id}")
+                    
+                    # Try batch first
+                    guild_success = await register_commands_batch(bot, endpoint, guild_cmds)
+                    if not guild_success:
+                        logger.warning(f"Batch registration failed for guild {guild_id}, falling back to individual")
+                        guild_success = await register_commands_individually(bot, guild_cmds, guild_id=guild_id)
+                    
+                    # Track overall success
+                    overall_success = overall_success and guild_success
+                else:
+                    logger.warning(f"No commands found to register for guild {guild_id}")
+                
+                # Add delay between guild registrations
+                await asyncio.sleep(10)  # 10-second delay between guild registrations
+            
+            return overall_success
+            
+        # Standard registration flow when no specific guild_ids are provided
         try:
+            # First, register global commands
             endpoint = DISCORD_GLOBAL_ENDPOINT.format(app_id=app_id)
-            # Convert commands to proper format for Discord
             formatted_commands = []
             
             for cmd in commands_payload:
                 # Skip if this isn't a global command
-                if not hasattr(cmd, 'guild_ids') or cmd.guild_ids:
+                if hasattr(cmd, 'guild_ids') and cmd.guild_ids:
                     continue
                 
                 # Extract necessary command data
@@ -118,6 +170,9 @@ async def register_commands(bot) -> bool:
                 
                 # Track overall success
                 success = success and guild_success
+                
+                # Add delay between guild registrations
+                await asyncio.sleep(5)
             
             return success
             

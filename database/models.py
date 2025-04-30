@@ -3,6 +3,36 @@ import logging
 
 logger = logging.getLogger('deadside_bot.database.models')
 
+class KillfeedSettings:
+    """Model for killfeed notification settings"""
+    collection_name = "killfeed_settings"
+    
+    @classmethod
+    async def get_for_guild(cls, db, guild_id):
+        """Get killfeed settings for a specific guild"""
+        collection = await db.get_collection(cls.collection_name)
+        data = await collection.find_one({"guild_id": str(guild_id)})
+        return data
+        
+    @classmethod
+    async def update(cls, db, guild_id, settings):
+        """Update killfeed settings for a guild"""
+        collection = await db.get_collection(cls.collection_name)
+        settings["guild_id"] = str(guild_id)
+        
+        # Add timestamps
+        now = datetime.utcnow()
+        if "_id" not in settings:
+            settings["created_at"] = now
+        settings["updated_at"] = now
+        
+        await collection.update_one(
+            {"guild_id": str(guild_id)},
+            {"$set": settings},
+            upsert=True
+        )
+        return settings
+
 class AuthCredentials:
     """Model for server authentication credentials"""
     collection_name = "auth_credentials"

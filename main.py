@@ -16,12 +16,12 @@ from cogs.admin_commands import AdminCommands
 # from cogs.server_commands_refactored import ServerCommands
 # from cogs.stats_commands_refactored import StatsCommands
 # from cogs.killfeed_commands_refactored import KillfeedCommands
-from cogs.mission_commands_refactored import MissionCommands
-from cogs.connection_commands import ConnectionCommands
+# from cogs.mission_commands_refactored import MissionCommands
+# from cogs.connection_commands import ConnectionCommands
 # from cogs.faction_commands import FactionCommands
 # from cogs.notification_cog import NotificationCog
-from cogs.rivalry_commands import RivalryCommands
-from cogs.analytics_cog import AnalyticsCog
+# from cogs.rivalry_commands import RivalryCommands
+# from cogs.analytics_cog import AnalyticsCog
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -670,7 +670,7 @@ async def sync_slash_commands():
         from cogs.server_commands_refactored import server_group 
         from cogs.connection_commands import connection_group
         from cogs.killfeed_commands_refactored import killfeed_group
-        from cogs.mission_commands_refactored import mission_group
+        # from cogs.mission_commands_refactored import mission_group
         from cogs.faction_commands import faction_group
         from cogs.stats_commands_refactored import stats_group
         
@@ -1126,9 +1126,9 @@ async def commands_menu(ctx):
 
 # Import all cog classes for easier access
 # Using refactored commands with proper slash command implementation
-from cogs.server_commands_refactored import ServerCommands
+from cogs.server_commands import ServerCommands
 from cogs.stats_commands_refactored import StatsCommands
-from cogs.killfeed_commands_refactored import KillfeedCommands
+from cogs.killfeed_commands import KillfeedCommands
 # Temporarily commenting out problematic cogs during debugging
 # from cogs.mission_commands_refactored import MissionCommands
 from cogs.connection_commands import ConnectionCommands
@@ -1295,7 +1295,7 @@ async def load_cogs():
         ServerCommands,
         StatsCommands,
         KillfeedCommands,
-        ConnectionCommands,
+        # ConnectionCommands,
         # MissionCommands, # Temporarily disabled due to syntax errors
         AdminCommands
         # FactionCommands, # Temporarily disabled due to syntax errors

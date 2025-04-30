@@ -6,45 +6,34 @@ without starting the web server. This allows for easier debugging
 and running the bot separately.
 """
 
-import os
 import logging
-import asyncio
-from dotenv import load_dotenv
-import traceback
-
-# Create the log directory if it doesn't exist
-os.makedirs('logs', exist_ok=True)
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Configure logging
-logging_level = os.getenv("LOGGING_LEVEL", "INFO").upper()
-numeric_level = getattr(logging, logging_level, logging.INFO)
-logging.basicConfig(
-    level=numeric_level,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),  # Log to console
-        logging.FileHandler('logs/bot.log', mode='a')  # Log to file
-    ]
-)
-
-logger = logging.getLogger('deadside_bot')
-logger.info("Starting Discord bot...")
+import sys
+from bot_main import main as bot_main
 
 def run_bot():
     """Run the Discord bot"""
+    print("="*60)
+    print("Starting Discord Bot")
+    print("="*60)
+    
     try:
-        # Import here to avoid circular imports
-        from main import main
-        logger.info("Bot main function imported")
+        # Setup console logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler('logs/bot.log')
+            ]
+        )
         
-        # The main function is not async, it calls bot.run() which blocks
-        main()
+        # Run the bot
+        bot_main()
+        
     except Exception as e:
-        logger.error(f"Error starting bot: {e}")
-        logger.error(traceback.format_exc())
+        print(f"ERROR: Failed to start the bot: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     run_bot()

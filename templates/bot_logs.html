@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Logs</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <style>
+        .log-view {
+            height: 90vh;
+            background-color: #000;
+            color: #ccc;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+        
+        .log-line {
+            margin-bottom: 2px;
+            font-size: 13px;
+        }
+        
+        .refresh-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-2">
+        <div class="row">
+            <div class="col-12">
+                <h3>Bot Log Viewer</h3>
+                <p>
+                    <a href="/" class="btn btn-sm btn-outline-secondary">Dashboard</a>
+                    <a href="/console" class="btn btn-sm btn-outline-secondary">System Console</a>
+                    <a href="/bot_console" class="btn btn-sm btn-outline-secondary">Bot Console</a>
+                    <button id="refresh-btn" class="btn btn-sm btn-primary refresh-btn">Refresh Logs</button>
+                </p>
+                <div class="log-view" id="log-container">
+                    <div class="spinner-border text-light" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span>Loading logs...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const logContainer = document.getElementById('log-container');
+            const refreshBtn = document.getElementById('refresh-btn');
+            
+            function loadLogs() {
+                // Show loading indicator
+                logContainer.innerHTML = `
+                    <div class="spinner-border text-light" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span>Loading logs...</span>
+                `;
+                
+                // Use fetch to get the log file content
+                fetch('/api/bot/log-file')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}`);
+                        }
+                        return response.text();
+                    })
+                    .then(logContent => {
+                        // Split by lines and format
+                        const lines = logContent.split('\n');
+                        const logHtml = lines.map(line => {
+                            let lineClass = 'text-muted';
+                            
+                            if (line.includes('ERROR') || line.includes('error')) {
+                                lineClass = 'text-danger';
+                            } else if (line.includes('WARNING') || line.includes('warning')) {
+                                lineClass = 'text-warning';
+                            } else if (line.includes('INFO') || line.includes('info')) {
+                                lineClass = 'text-info';
+                            } else if (line.includes('DEBUG') || line.includes('debug')) {
+                                lineClass = 'text-success';
+                            }
+                            
+                            return `<div class="log-line ${lineClass}">${line}</div>`;
+                        }).join('');
+                        
+                        // Update the container
+                        logContainer.innerHTML = logHtml || 'No logs found.';
+                        
+                        // Scroll to bottom
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                    })
+                    .catch(error => {
+                        logContainer.innerHTML = `<div class="alert alert-danger">Error loading logs: ${error.message}</div>`;
+                    });
+            }
+            
+            // Load logs on page load
+            loadLogs();
+            
+            // Refresh button click handler
+            refreshBtn.addEventListener('click', loadLogs);
+        });
+    </script>
+</body>
+</html>

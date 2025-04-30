@@ -163,22 +163,50 @@ def get_bot_status():
     
     return jsonify(bot_status)
 
-# API endpoint to start the bot using our runner
+# API endpoint to start the bot using subprocess
 @app.route('/api/bot/start', methods=['POST'])
 def start_bot_api():
-    # Import our bot runner
-    from run_discord_bot import start_bot, status_bot
+    import subprocess
+    import sys
+    import os
     
     # Check if bot is already running
-    if status_bot():
-        return jsonify({
-            'success': False,
-            'error': 'Bot is already running'
-        })
+    try:
+        pid_file = os.path.join('temp', 'bot.pid')
+        if os.path.exists(pid_file):
+            with open(pid_file, 'r') as f:
+                pid = int(f.read().strip())
+            
+            # Check if process is actually running
+            try:
+                os.kill(pid, 0)  # Signal 0 just tests if process exists
+                return jsonify({
+                    'success': False,
+                    'error': f'Bot is already running with PID {pid}'
+                })
+            except OSError:
+                # Process doesn't exist
+                pass
+    except Exception:
+        pass
     
     try:
-        # Start the bot using our runner
-        pid = start_bot()
+        # Direct approach - register commands then start bot
+        # First run the command registration
+        subprocess.run([sys.executable, 'smart_register_commands.py'], check=True)
+        
+        # Then start the actual bot in a background process
+        process = subprocess.Popen(
+            [sys.executable, 'bot_main.py'],
+            stdout=open(os.path.join('logs', 'bot_output.log'), 'a'),
+            stderr=subprocess.STDOUT,
+            start_new_session=True  # Detach from parent process
+        )
+        
+        # Save PID
+        pid = process.pid
+        with open(os.path.join('temp', 'bot.pid'), 'w') as f:
+            f.write(str(pid))
         
         # Update status in our global bot status
         bot_status['running'] = True
@@ -196,36 +224,44 @@ def start_bot_api():
             'error': str(e)
         })
 
-# API endpoint to stop the bot using our runner
+# API endpoint to stop the bot
 @app.route('/api/bot/stop', methods=['POST'])
 def stop_bot_api():
-    # Import our bot runner
-    from run_discord_bot import stop_bot, status_bot
+    import os
+    import signal
     
     # Check if bot is running
-    if not status_bot():
+    pid_file = os.path.join('temp', 'bot.pid')
+    if not os.path.exists(pid_file):
         return jsonify({
             'success': False,
             'error': 'Bot is not running'
         })
     
     try:
-        # Stop the bot using our runner
-        result = stop_bot()
+        # Read PID
+        with open(pid_file, 'r') as f:
+            pid = int(f.read().strip())
         
-        if result:
+        # Try to terminate the process
+        try:
+            os.kill(pid, signal.SIGTERM)
+            
             # Update status
             bot_status['running'] = False
             bot_status['status'] = 'Stopped manually'
             bot_status['pid'] = None
             
+            # Remove PID file
+            os.unlink(pid_file)
+            
             return jsonify({
                 'success': True
             })
-        else:
+        except OSError as e:
             return jsonify({
                 'success': False,
-                'error': 'Failed to stop the bot'
+                'error': f'Failed to stop bot: {e}'
             })
     except Exception as e:
         return jsonify({
@@ -247,36 +283,77 @@ logging.warning("Console test: This is a sample warning log")
 logging.error("Console test: This is a sample error log")
 logging.debug("Console test: This is a debug message")
 
-# Start Discord bot in a background thread using our improved launcher
+# Start Discord bot in a background thread using direct approach
 def start_discord_bot():
     """Start the Discord bot in a separate thread"""
     import time
     import subprocess
+    import sys
+    import os
+    
     logging.info("Starting Discord bot thread")
     try:
         # Small delay to ensure Flask is fully initialized
         time.sleep(2)
         
-        # Use our dedicated bot_launcher.py script (which uses run_discord_bot.py)
-        # This ensures both command registration and actual bot process are properly managed
+        # Check if bot is already running
+        pid_file = os.path.join('temp', 'bot.pid')
+        if os.path.exists(pid_file):
+            try:
+                with open(pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+                
+                # Check if process exists
+                try:
+                    os.kill(pid, 0)  # Signal 0 just tests if process exists
+                    logging.info(f"Discord bot already running with PID: {pid}")
+                    return
+                except OSError:
+                    # Process doesn't exist, remove stale PID file
+                    os.unlink(pid_file)
+            except Exception as e:
+                logging.warning(f"Error checking existing bot PID: {e}")
+        
+        # First register commands
+        logging.info("Registering Discord commands...")
+        try:
+            # Run in a separate process and capture output
+            registration = subprocess.run(
+                [sys.executable, 'smart_register_commands.py'],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            for line in registration.stdout.splitlines():
+                logging.info(f"CMD_REG: {line}")
+            logging.info("Command registration completed successfully")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Command registration failed with code {e.returncode}")
+            for line in e.output.splitlines():
+                logging.error(f"CMD_REG_ERROR: {line}")
+            # Continue anyway as we still want to start the bot
+        
+        # Then start the actual bot process
+        logging.info("Starting bot process...")
+        log_file = os.path.join('logs', 'bot_output.log')
+        
+        # Ensure the logs directory exists
+        os.makedirs('logs', exist_ok=True)
+        
+        # Start the process
         bot_process = subprocess.Popen(
-            ["python", "bot_launcher.py"],
-            stdout=subprocess.PIPE, 
+            [sys.executable, 'bot_main.py'],
+            stdout=open(log_file, 'a'),
             stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
+            start_new_session=True  # Detach from parent process
         )
         
-        logging.info(f"Started Discord bot launcher with PID: {bot_process.pid}")
+        # Save PID
+        bot_pid = bot_process.pid
+        with open(pid_file, 'w') as f:
+            f.write(str(bot_pid))
         
-        # Start a thread to log output from the bot launcher
-        def log_output():
-            for line in bot_process.stdout:
-                logging.info(f"BOT_LAUNCHER: {line.strip()}")
-        
-        import threading
-        threading.Thread(target=log_output, daemon=True).start()
-            
+        logging.info(f"Started Discord bot with PID: {bot_pid}")
     except Exception as e:
         logging.error(f"Error starting Discord bot: {e}")
         import traceback

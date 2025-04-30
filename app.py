@@ -247,25 +247,35 @@ logging.warning("Console test: This is a sample warning log")
 logging.error("Console test: This is a sample error log")
 logging.debug("Console test: This is a debug message")
 
-# Start Discord bot in a background thread using our new runner
+# Start Discord bot in a background thread using our improved launcher
 def start_discord_bot():
     """Start the Discord bot in a separate thread"""
     import time
+    import subprocess
     logging.info("Starting Discord bot thread")
     try:
         # Small delay to ensure Flask is fully initialized
         time.sleep(2)
         
-        # Use our new run_discord_bot.py script
-        from run_discord_bot import start_bot, stop_bot, status_bot
+        # Use our dedicated bot_launcher.py script (which uses run_discord_bot.py)
+        # This ensures both command registration and actual bot process are properly managed
+        bot_process = subprocess.Popen(
+            ["python", "bot_launcher.py"],
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
         
-        # Check if bot is already running
-        if status_bot():
-            logging.info("Discord bot is already running")
-        else:
-            # Start the bot
-            pid = start_bot()
-            logging.info(f"Started Discord bot with PID: {pid}")
+        logging.info(f"Started Discord bot launcher with PID: {bot_process.pid}")
+        
+        # Start a thread to log output from the bot launcher
+        def log_output():
+            for line in bot_process.stdout:
+                logging.info(f"BOT_LAUNCHER: {line.strip()}")
+        
+        import threading
+        threading.Thread(target=log_output, daemon=True).start()
             
     except Exception as e:
         logging.error(f"Error starting Discord bot: {e}")

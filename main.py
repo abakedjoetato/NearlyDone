@@ -19,11 +19,12 @@ def start_discord_bot():
     """Start the Discord bot in a separate thread"""
     logger.info("Starting Discord bot thread")
     try:
-        # Import the bot's main function
-        from bot_main import main as bot_main
+        # Import the bot runner to properly start the bot with all registration steps
+        import run_discord_bot
         
-        # Run the bot
-        bot_main()
+        # Start the bot using the runner
+        run_discord_bot.start_bot()
+        logger.info("Discord bot started using run_discord_bot")
     except Exception as e:
         logger.error(f"Error starting Discord bot: {e}")
         import traceback

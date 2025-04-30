@@ -202,7 +202,7 @@ class FactionCommands(commands.Cog):
                     
         # Get top weapon used
         top_weapon = sorted(member_stats["weapon_counts"].items(), key=lambda x: x[1], reverse=True)
-        m@faction_group.command(name="list", description="List all factions in this server", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="list", description="List all factions in this server", contexts=[discor@faction_group.command(name="list", description="List all factions in this server", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="list", description="List all factions in this server", contexts=[discord.InteractionContextType.guild],)_faction_embed(faction, ctx.guild, member_stats)
+        embed = create_faction_embed(faction, ctx.guild, member_stats)
         await ctx.respond(embed=embed)
         
     @faction_group.command(name="list", description="List all factions in this server")
@@ -224,7 +224,6 @@ class FactionCommands(commands.Cog):
         )
         
         for faction in factions:
-            @faction_group.command(name="invite", description="Invite a member to your faction", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="invite", description="Invite a member to your faction", contexts=[disco@faction_group.command(name="invite", description="Invite a member to your faction", contexts=[discord.InteractionContextType.guild], integration_types=[discord.IntegrationType.guild_install],)@faction_group.command(name="invite", description="Invite a member to your faction", contexts=[discord.InteractionContextType.guild],)else None
             # Add field for each faction
             embed.add_field(
                 name=f"{faction.name} [{faction.abbreviation}]",

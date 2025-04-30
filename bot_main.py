@@ -315,7 +315,9 @@ async def load_cogs():
         "connection_commands_refactored",
         # Add background commands, which demonstrate command processing in background
         "background_commands",
-        # Keep faction commands last as it has issues
+        # Use the rewritten faction commands instead of the broken one
+        "faction_commands_rewrite",
+        # Keep original faction commands as fallback, but it has issues
         "faction_commands"
     ]
     

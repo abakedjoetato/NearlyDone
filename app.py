@@ -4,6 +4,9 @@ import json
 import time
 import datetime
 import threading
+import subprocess
+import random
+import psutil
 from collections import deque
 
 from flask import Flask, render_template, redirect, url_for, flash, request, jsonify
@@ -48,6 +51,10 @@ def settings():
 def console():
     return render_template('console.html', title="Bot Console")
 
+@app.route('/bot_console')
+def bot_console():
+    return render_template('bot_console.html', title="Bot Live Console")
+
 # In-memory log buffer
 log_buffer = deque(maxlen=1000)  # Store the last 1000 log entries
 log_counter = 0  # Used to track log entry IDs
@@ -88,6 +95,167 @@ def get_console_logs():
         
     return jsonify({'logs': logs})
 
+# Buffer for bot-specific logs
+bot_log_buffer = deque(maxlen=2000)  # Store the last 2000 bot log entries
+bot_log_counter = 0  # Track bot log entry IDs
+
+# Bot status tracking
+bot_process = None
+bot_status = {
+    'running': False,
+    'status': 'Offline',
+    'start_time': None,
+    'pid': None
+}
+
+# Bot log handler - captures logs specifically from the bot process
+class BotBufferLogHandler(logging.Handler):
+    def emit(self, record):
+        global bot_log_counter
+        bot_log_counter += 1
+        
+        log_entry = {
+            'id': bot_log_counter,
+            'timestamp': time.time(),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': self.format(record)
+        }
+        
+        bot_log_buffer.append(log_entry)
+
+# Install the bot log handler
+bot_logger = logging.getLogger('deadside_bot')
+bot_handler = BotBufferLogHandler()
+bot_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+bot_logger.addHandler(bot_handler)
+
+# API endpoint to get bot logs
+@app.route('/api/bot/logs')
+def get_bot_logs():
+    since_id = request.args.get('since', 0, type=int)
+    
+    # Filter logs newer than the given ID
+    logs = [log for log in bot_log_buffer if log['id'] > since_id]
+    
+    # Limit to most recent 200 logs if there are too many
+    if len(logs) > 200:
+        logs = logs[-200:]
+        
+    return jsonify({'logs': logs})
+
+# API endpoint to get bot status
+@app.route('/api/bot/status')
+def get_bot_status():
+    global bot_process, bot_status
+    
+    # Update status if process exists but status is outdated
+    if bot_process is not None:
+        if bot_process.poll() is None:  # Process is running
+            if not bot_status['running']:
+                bot_status['running'] = True
+                bot_status['status'] = 'Running'
+        else:  # Process has exited
+            if bot_status['running']:
+                bot_status['running'] = False
+                bot_status['status'] = f'Exited with code {bot_process.returncode}'
+                bot_status['pid'] = None
+    
+    return jsonify(bot_status)
+
+# API endpoint to start the bot
+@app.route('/api/bot/start', methods=['POST'])
+def start_bot():
+    global bot_process, bot_status
+    
+    # Check if bot is already running
+    if bot_process is not None and bot_process.poll() is None:
+        return jsonify({
+            'success': False,
+            'error': 'Bot is already running'
+        })
+    
+    try:
+        # Start the bot process
+        bot_process = subprocess.Popen(
+            ['python', 'bot_main.py'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+        
+        # Update status
+        bot_status['running'] = True
+        bot_status['status'] = 'Starting'
+        bot_status['start_time'] = time.time()
+        bot_status['pid'] = bot_process.pid
+        
+        # Start a thread to read output
+        def read_output():
+            while bot_process.poll() is None:
+                line = bot_process.stdout.readline()
+                if line:
+                    bot_logger.info(f"BOT: {line.strip()}")
+            
+            # Process ended
+            bot_status['running'] = False
+            bot_status['status'] = f'Exited with code {bot_process.returncode}'
+            bot_status['pid'] = None
+        
+        threading.Thread(target=read_output, daemon=True).start()
+        
+        return jsonify({
+            'success': True,
+            'pid': bot_process.pid
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+# API endpoint to stop the bot
+@app.route('/api/bot/stop', methods=['POST'])
+def stop_bot():
+    global bot_process, bot_status
+    
+    # Check if bot is running
+    if bot_process is None or bot_process.poll() is not None:
+        return jsonify({
+            'success': False,
+            'error': 'Bot is not running'
+        })
+    
+    try:
+        # Try to terminate gracefully first
+        bot_process.terminate()
+        
+        # Wait up to 5 seconds for process to end
+        for _ in range(50):
+            if bot_process.poll() is not None:
+                break
+            time.sleep(0.1)
+        
+        # If still running, kill it
+        if bot_process.poll() is None:
+            bot_process.kill()
+        
+        # Update status
+        bot_status['running'] = False
+        bot_status['status'] = f'Stopped manually'
+        bot_status['pid'] = None
+        
+        return jsonify({
+            'success': True
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
 # Create the database tables
 with app.app_context():
     # Import models
@@ -105,8 +273,6 @@ logging.debug("Console test: This is a debug message")
 # Set up periodic logging
 def log_system_info():
     """Periodically log system info to provide an active log stream"""
-    import psutil
-    import random
     
     # Log system metrics
     logging.info(f"System monitoring: CPU: {psutil.cpu_percent()}% | RAM: {psutil.virtual_memory().percent}%")
@@ -140,7 +306,6 @@ def log_system_info():
         logging.warning(f"Bot warning: {random.choice(warnings)}")
 
 # Start periodic logging in a background thread
-import threading
 def start_periodic_logging():
     log_system_info()
     # Schedule the next run in 5 seconds

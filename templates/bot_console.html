@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Console - Live Feed</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <style>
+        .console-container {
+            height: calc(100vh - 150px);
+            background-color: var(--bs-dark);
+            color: var(--bs-light);
+            border: 1px solid var(--bs-gray-700);
+            border-radius: 5px;
+            padding: 10px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            line-height: 1.4;
+            font-size: 0.9rem;
+        }
+        
+        .log-entry {
+            margin-bottom: 2px;
+            padding: 2px 0;
+            border-bottom: 1px solid var(--bs-gray-800);
+        }
+        
+        .log-info {
+            color: var(--bs-info);
+        }
+        
+        .log-warning {
+            color: var(--bs-warning);
+        }
+        
+        .log-error {
+            color: var(--bs-danger);
+        }
+        
+        .log-debug {
+            color: var(--bs-gray-500);
+        }
+
+        .autoscroll-control {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .control-panel {
+            background-color: var(--bs-gray-800);
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        
+        #startBotBtn, #stopBotBtn {
+            width: 120px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Deadside Bot</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/servers">Servers</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/stats">Stats</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">Settings</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/bot_console">Bot Console</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h1>Bot Console - Live Feed</h1>
+        
+        <div class="control-panel">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="btn-group" role="group">
+                        <button id="startBotBtn" class="btn btn-success">Start Bot</button>
+                        <button id="stopBotBtn" class="btn btn-danger">Stop Bot</button>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="form-check form-check-inline mt-2">
+                        <input class="form-check-input" type="checkbox" id="filterInfo" checked>
+                        <label class="form-check-label log-info" for="filterInfo">INFO</label>
+                    </div>
+                    <div class="form-check form-check-inline mt-2">
+                        <input class="form-check-input" type="checkbox" id="filterWarning" checked>
+                        <label class="form-check-label log-warning" for="filterWarning">WARNING</label>
+                    </div>
+                    <div class="form-check form-check-inline mt-2">
+                        <input class="form-check-input" type="checkbox" id="filterError" checked>
+                        <label class="form-check-label log-error" for="filterError">ERROR</label>
+                    </div>
+                    <div class="form-check form-check-inline mt-2">
+                        <input class="form-check-input" type="checkbox" id="filterDebug">
+                        <label class="form-check-label log-debug" for="filterDebug">DEBUG</label>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="searchInput" placeholder="Search logs...">
+                        <button class="btn btn-primary" id="searchBtn">Search</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-2">
+                <div class="col">
+                    <div class="progress" style="height: 5px;">
+                        <div id="botStatus" class="progress-bar bg-danger" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <small id="botStatusText" class="text-muted">Bot status: Offline</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="console-container" id="consoleOutput">
+            <div class="log-entry log-info">Loading logs...</div>
+        </div>
+        
+        <div class="autoscroll-control">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="autoScrollToggle" checked>
+                <label class="form-check-label" for="autoScrollToggle">Auto-scroll</label>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const consoleOutput = document.getElementById('consoleOutput');
+            const autoScrollToggle = document.getElementById('autoScrollToggle');
+            const filterInfo = document.getElementById('filterInfo');
+            const filterWarning = document.getElementById('filterWarning');
+            const filterError = document.getElementById('filterError');
+            const filterDebug = document.getElementById('filterDebug');
+            const searchInput = document.getElementById('searchInput');
+            const searchBtn = document.getElementById('searchBtn');
+            const startBotBtn = document.getElementById('startBotBtn');
+            const stopBotBtn = document.getElementById('stopBotBtn');
+            const botStatus = document.getElementById('botStatus');
+            const botStatusText = document.getElementById('botStatusText');
+            
+            let lastLogId = 0;
+            let logBuffer = [];
+            let isConnected = false;
+            let reconnectAttempts = 0;
+            let botRunning = false;
+            
+            // Handle bot control
+            startBotBtn.addEventListener('click', function() {
+                fetch('/api/bot/start', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            addLogEntry('System', 'INFO', 'Bot start request sent. Starting bot process...');
+                            updateBotStatus(true, 'Starting...');
+                        } else {
+                            addLogEntry('System', 'ERROR', 'Failed to start bot: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        addLogEntry('System', 'ERROR', 'Error sending bot start request: ' + error);
+                    });
+            });
+            
+            stopBotBtn.addEventListener('click', function() {
+                fetch('/api/bot/stop', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            addLogEntry('System', 'INFO', 'Bot stop request sent. Stopping bot process...');
+                            updateBotStatus(false, 'Stopping...');
+                        } else {
+                            addLogEntry('System', 'ERROR', 'Failed to stop bot: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        addLogEntry('System', 'ERROR', 'Error sending bot stop request: ' + error);
+                    });
+            });
+            
+            // Update the bot status indicators
+            function updateBotStatus(running, statusText) {
+                botRunning = running;
+                
+                if (running) {
+                    botStatus.classList.remove('bg-danger');
+                    botStatus.classList.add('bg-success');
+                    botStatus.style.width = '100%';
+                } else {
+                    botStatus.classList.remove('bg-success');
+                    botStatus.classList.add('bg-danger');
+                    botStatus.style.width = '0%';
+                }
+                
+                botStatusText.textContent = 'Bot status: ' + (statusText || (running ? 'Running' : 'Offline'));
+            }
+
+            // Fetch initial bot status
+            function fetchBotStatus() {
+                fetch('/api/bot/status')
+                    .then(response => response.json())
+                    .then(data => {
+                        updateBotStatus(data.running, data.status);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching bot status:', error);
+                    });
+            }
+            
+            // Fetch logs from the server
+            function fetchLogs() {
+                fetch(`/api/bot/logs?since=${lastLogId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.logs && data.logs.length > 0) {
+                            processBotLogs(data.logs);
+                        }
+                        
+                        // Reconnection successful if we get here
+                        if (!isConnected) {
+                            isConnected = true;
+                            reconnectAttempts = 0;
+                            addLogEntry('System', 'INFO', 'Connected to log stream');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching logs:', error);
+                        isConnected = false;
+                        
+                        // Handle reconnection with exponential backoff
+                        reconnectAttempts++;
+                        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                        
+                        addLogEntry('System', 'ERROR', `Connection to log stream lost. Reconnecting in ${delay/1000}s...`);
+                        
+                        setTimeout(fetchLogs, delay);
+                        return;
+                    })
+                    .finally(() => {
+                        // Continue polling
+                        setTimeout(fetchLogs, 1000);
+                    });
+            }
+            
+            // Process and display log entries
+            function processBotLogs(logs) {
+                logs.forEach(log => {
+                    if (log.id > lastLogId) {
+                        lastLogId = log.id;
+                        
+                        // Extract log parts
+                        let logger = log.logger || 'system';
+                        let level = log.level || 'INFO';
+                        let message = log.message || '';
+                        let timestamp = log.timestamp ? new Date(log.timestamp * 1000) : new Date();
+                        
+                        // Add to log buffer for searching
+                        logBuffer.push({
+                            id: log.id,
+                            logger,
+                            level,
+                            message,
+                            timestamp,
+                            element: addLogEntry(logger, level, message, timestamp)
+                        });
+                        
+                        // Trim buffer if it gets too large (keep last 1000 entries)
+                        if (logBuffer.length > 1000) {
+                            logBuffer.shift();
+                        }
+                    }
+                });
+                
+                // Auto-scroll if enabled
+                if (autoScrollToggle.checked) {
+                    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                }
+            }
+            
+            // Add a log entry to the console
+            function addLogEntry(logger, level, message, timestamp = new Date()) {
+                // Check if we should display this log level
+                let visible = (
+                    (level === 'INFO' && filterInfo.checked) ||
+                    (level === 'WARNING' && filterWarning.checked) ||
+                    (level === 'ERROR' && filterError.checked) ||
+                    (level === 'DEBUG' && filterDebug.checked)
+                );
+                
+                // Format timestamp
+                const timeStr = timestamp.toLocaleTimeString();
+                
+                // Create log entry element
+                const logEntry = document.createElement('div');
+                logEntry.className = `log-entry log-${level.toLowerCase()}`;
+                if (!visible) {
+                    logEntry.style.display = 'none';
+                }
+                logEntry.dataset.level = level;
+                logEntry.dataset.logger = logger;
+                
+                logEntry.textContent = `[${timeStr}] ${level}: ${logger} - ${message}`;
+                
+                // Special highlights for certain types of log entries
+                if (message.includes('registered command') || message.includes('Started bot')) {
+                    logEntry.style.fontWeight = 'bold';
+                }
+                
+                consoleOutput.appendChild(logEntry);
+                return logEntry;
+            }
+            
+            // Filter logs based on selected log levels
+            function applyFilters() {
+                const entries = document.querySelectorAll('.log-entry');
+                entries.forEach(entry => {
+                    const level = entry.dataset.level;
+                    let visible = false;
+                    
+                    switch (level) {
+                        case 'INFO':
+                            visible = filterInfo.checked;
+                            break;
+                        case 'WARNING':
+                            visible = filterWarning.checked;
+                            break;
+                        case 'ERROR':
+                            visible = filterError.checked;
+                            break;
+                        case 'DEBUG':
+                            visible = filterDebug.checked;
+                            break;
+                    }
+                    
+                    entry.style.display = visible ? '' : 'none';
+                });
+            }
+            
+            // Search logs for given text
+            function searchLogs() {
+                const searchText = searchInput.value.toLowerCase();
+                if (!searchText) {
+                    // Reset all visibility first according to filters
+                    applyFilters();
+                    return;
+                }
+                
+                // Hide all entries first
+                document.querySelectorAll('.log-entry').forEach(entry => {
+                    entry.style.display = 'none';
+                });
+                
+                // Show only matching entries that also match the filters
+                logBuffer.forEach(log => {
+                    const level = log.level;
+                    let visibleByFilter = false;
+                    
+                    switch (level) {
+                        case 'INFO':
+                            visibleByFilter = filterInfo.checked;
+                            break;
+                        case 'WARNING':
+                            visibleByFilter = filterWarning.checked;
+                            break;
+                        case 'ERROR':
+                            visibleByFilter = filterError.checked;
+                            break;
+                        case 'DEBUG':
+                            visibleByFilter = filterDebug.checked;
+                            break;
+                    }
+                    
+                    const logText = `${log.logger} ${log.level} ${log.message}`.toLowerCase();
+                    if (logText.includes(searchText) && visibleByFilter) {
+                        log.element.style.display = '';
+                        // Highlight the matching text
+                        log.element.innerHTML = log.element.textContent.replace(
+                            new RegExp(searchText, 'gi'),
+                            match => `<span class="bg-primary">${match}</span>`
+                        );
+                    }
+                });
+            }
+            
+            // Set up event listeners
+            filterInfo.addEventListener('change', applyFilters);
+            filterWarning.addEventListener('change', applyFilters);
+            filterError.addEventListener('change', applyFilters);
+            filterDebug.addEventListener('change', applyFilters);
+            
+            searchBtn.addEventListener('click', searchLogs);
+            searchInput.addEventListener('keypress', event => {
+                if (event.key === 'Enter') {
+                    searchLogs();
+                }
+            });
+            
+            // Start fetching logs
+            addLogEntry('System', 'INFO', 'Connecting to bot log stream...');
+            fetchBotStatus();
+            fetchLogs();
+        });
+    </script>
+</body>
+</html>

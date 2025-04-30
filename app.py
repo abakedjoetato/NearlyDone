@@ -96,5 +96,11 @@ with app.app_context():
     # Create tables
     db.create_all()
 
+# Generate some test logs
+logging.info("Console test: Application started successfully")
+logging.warning("Console test: This is a sample warning log")
+logging.error("Console test: This is a sample error log")
+logging.debug("Console test: This is a debug message")
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

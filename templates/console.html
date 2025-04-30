@@ -73,21 +73,28 @@
             fetch('/api/console-logs?since=' + lastLogId)
                 .then(response => response.json())
                 .then(data => {
+                    console.log('Received log data:', data);
+                    
                     if (data.logs && data.logs.length > 0) {
                         // Append new logs
                         const logLines = data.logs.map(log => 
                             `[${new Date(log.timestamp * 1000).toLocaleTimeString()}] ${log.level}: ${log.message}`
                         ).join('\n');
                         
+                        console.log('Formatted log lines:', logLines);
+                        
                         // If this is the first fetch, replace the connecting message
                         if (consoleOutput.textContent.includes('Connecting to bot console...')) {
+                            console.log('Replacing initial message with logs');
                             consoleOutput.textContent = logLines;
                         } else {
+                            console.log('Appending new logs');
                             consoleOutput.textContent += '\n' + logLines;
                         }
                         
                         // Update the last log ID
                         lastLogId = data.logs[data.logs.length - 1].id;
+                        console.log('Updated lastLogId to:', lastLogId);
                         
                         // Scroll to bottom if auto-scroll is enabled
                         scrollToBottom();
